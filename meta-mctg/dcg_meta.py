@@ -224,6 +224,8 @@ def train(args):
     print(f"Number of GPUs: {torch.cuda.device_count()}")
     print(f"Multi-gpu enabled: {args.multi_gpu}")
     
+    model.to(args.device)
+    
     # extra
     # Check if CUDA is available
     if torch.cuda.is_available():
