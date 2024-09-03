@@ -219,7 +219,7 @@ def train(args):
             continue
         else:
             param[1].requires_grad = False
-    model.to(args.device)
+    
     # extra
     print(f"Device is {args.device}")
     print(f"Number of GPUs: {torch.cuda.device_count()}")
@@ -234,19 +234,15 @@ def train(args):
             print(f"GPU {i}: {torch.cuda.get_device_name(i)} (ID: {i})")
     else:
         print("No GPUs are available.")
-    # Ensure model is using multiple GPUs
-    print(f"Model device before DataParallel: {next(model.parameters()).device}")
-
-    # Apply DataParallel
-    model = nn.DataParallel(model, device_ids=[1, 0])
-    print(f"Model device after DataParallel: {next(model.parameters()).device}")
-    # extra
     
+    model.to(args.device)
     if args.multi_gpu and torch.cuda.device_count() > 1:
+        print(f"Model device before DataParallel: {next(model.parameters()).device}")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model, device_ids=[1, 0])
-        
+        print(f"Model device after DataParallel: {next(model.parameters()).device}")
+    # extra    
     # model.to(args.device)
     if args.torch_compile:
         print("Compiling model")
