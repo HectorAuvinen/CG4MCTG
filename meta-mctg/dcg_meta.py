@@ -196,7 +196,7 @@ def prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0
     #train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank,shuffle=False,drop_last=False)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, pin_memory=pin_memory,num_workers=num_workers,drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler,shuffle=False)
-    return train_dataset,train_sampler,train_dataloader
+    return train_dataloader
 ############# Added ########################################################
 
 def train(rank,args,world_size):
@@ -224,7 +224,7 @@ def train(rank,args,world_size):
     #train_sampler = torch.utils.data.RandomSampler(train_dataset)
     #train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler)
     ############# Added ########################################################
-    train_dataset,train_sampler,train_dataloader = prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0)
+    train_dataloader = prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0)
     setup_ddp(rank=rank,world_size=world_size)
     ############# Added ########################################################
     
