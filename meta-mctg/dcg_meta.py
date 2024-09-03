@@ -240,7 +240,7 @@ def train(args):
         print(f"Model device before DataParallel: {next(model.parameters()).device}")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-        model = nn.DataParallel(model)#, device_ids=[1, 0])
+        model = nn.DataParallel(model, device_ids=[1, 0])
         print(f"Model device after DataParallel: {next(model.parameters()).device}")
     # extra    
     # model.to(args.device)
