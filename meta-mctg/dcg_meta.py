@@ -314,17 +314,17 @@ def train(args):
                         att_tokens_ids = label_ids[key]
                     else:
                         att_tokens_ids = torch.cat([att_tokens_ids, label_ids[key]], dim=-1)
-                att_tokens_ids = att_tokens_ids.to("cuda:1")
+                att_tokens_ids = att_tokens_ids.to(args.device)
                     
                 eos_token_ids = torch.tensor(tokenizer.encode(tokenizer.eos_token))
-                eos_token_ids = eos_token_ids.expand(args.batch_size, eos_token_ids.shape[0]).to("cuda:1")
-                input_ids = torch.tensor(input_ids).to("cuda:1")
+                eos_token_ids = eos_token_ids.expand(args.batch_size, eos_token_ids.shape[0]).to(args.device)
+                input_ids = torch.tensor(input_ids).to(args.device)
                 input_ids = torch.cat([eos_token_ids, input_ids], dim=-1)
 
                 prompt_len = args.dcg_att_len + args.dcg_task_len
-                eos_token_mask = torch.tensor([1]).expand(args.batch_size, 1).to("cuda:1")
-                prompt_mask = torch.tensor([1] * prompt_len).expand(args.batch_size, prompt_len).to("cuda:1")
-                attention_mask = torch.tensor(attention_mask).to("cuda:1")
+                eos_token_mask = torch.tensor([1]).expand(args.batch_size, 1).to(args.device)
+                prompt_mask = torch.tensor([1] * prompt_len).expand(args.batch_size, prompt_len).to(args.device)
+                attention_mask = torch.tensor(attention_mask).to(args.device)
                 attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
                 attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
                 ######### ADDED ########################################################
@@ -350,7 +350,7 @@ def train(args):
                 loss_set = list()
                 loss_set.append(torch.exp(-loss_lm))
                 for pseu_set in pseu_combinations_set:
-                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to("cuda:1")
+                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
                     dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
