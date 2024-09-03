@@ -224,6 +224,18 @@ def train(args):
     print(f"Number of GPUs: {torch.cuda.device_count()}")
     print(f"Multi-gpu enabled: {args.multi_gpu}")
     
+    # extra
+    # Check if CUDA is available
+    if torch.cuda.is_available():
+        num_gpus = torch.cuda.device_count()
+        print(f"Number of available GPUs: {num_gpus}")
+
+        for i in range(num_gpus):
+            print(f"GPU {i}: {torch.cuda.get_device_name(i)} (ID: {i})")
+    else:
+        print("No GPUs are available.")
+    # extra
+    
     if args.multi_gpu and torch.cuda.device_count() > 1:
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
