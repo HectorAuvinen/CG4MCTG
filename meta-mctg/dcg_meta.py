@@ -240,7 +240,7 @@ def train(args):
         print(f"Model device before DataParallel: {next(model.parameters()).device}")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
-        model = nn.DataParallel(model, device_ids=[1, 0])
+        model = nn.DataParallel(model)#, device_ids=[1, 0])
         print(f"Model device after DataParallel: {next(model.parameters()).device}")
     # extra    
     # model.to(args.device)
@@ -271,7 +271,9 @@ def train(args):
     loss_fct = CrossEntropyLoss(ignore_index=0)
     args.loss_fct = loss_fct
     logger.info('start_training')
-
+    print("args.batch_size", args.batch_size)
+    print("args.gradient_accumulation_steps", args.gradient_accumulation_steps)
+    print("len(args.seen_combs)", len(args.seen_combs))
     mini_batch = args.batch_size * args.gradient_accumulation_steps
     if len(args.seen_combs) < mini_batch:
         args.sample_train = True
@@ -516,7 +518,15 @@ def train(args):
             current_epoch += 1
             backup_label_to_tokenized_data = copy.deepcopy(label_to_tokenized_data)
             num_combs_of_sample_combs = math.comb(len(args.seen_combs), num_sample_combs)
+            print("num_sample_combs", num_sample_combs)
+            print("len(args.seen_combs)", len(args.seen_combs))
+            print("num_combs_of_sample_combs", num_combs_of_sample_combs)
+            print("num_sample_combs", num_sample_combs)
+            print("new_gradient_accumulation_steps", new_gradient_accumulation_steps)
+            print("mini_batch", mini_batch)
             samples_per_comb_of_sample_combs = int(len(tokenized_data) / num_combs_of_sample_combs / num_sample_combs)
+            print("len(tokenized_data)", len(tokenized_data))
+            print("samples_per_comb_of_sample_combs", samples_per_comb_of_sample_combs)
             combs_of_comb_list = list()
             all_combs_of_comb = list(itertools.combinations(args.seen_combs, num_sample_combs))
             for item in all_combs_of_comb:
@@ -524,7 +534,7 @@ def train(args):
                     combs_of_comb_list.append(item)
             # we ignore the residual data in the training set
             residual_num_per_comb = int((len(tokenized_data) - samples_per_comb_of_sample_combs * num_combs_of_sample_combs * num_sample_combs) / len(args.seen_combs))    
-
+            print("combs_of_comb_list", combs_of_comb_list)
             random.shuffle(combs_of_comb_list)
             assert samples_per_comb_of_sample_combs >= new_gradient_accumulation_steps
 
