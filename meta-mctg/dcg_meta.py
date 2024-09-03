@@ -211,7 +211,7 @@ def train(args):
     config.dcg_att_num = len(label_keys)
     config.dcg_att_len = args.dcg_att_len
     config.dcg_task_len = args.dcg_task_len
-    model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config,dtype=torch.float16)
+    model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config,torch_dtype=torch.float16)
 
     # frozen parameters
     for param in model.named_parameters():
