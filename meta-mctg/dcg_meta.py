@@ -225,7 +225,7 @@ def train(args):
     print(f"Number of GPUs: {torch.cuda.device_count()}")
     print(f"Multi-gpu enabled: {args.multi_gpu}")
     
-    # model.to(args.device)
+    model.to(args.device)
     # Check if CUDA is available
     if torch.cuda.is_available():
         num_gpus = torch.cuda.device_count()
@@ -248,7 +248,7 @@ def train(args):
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model, device_ids=[1, 0])
         
-    model.to(args.device)
+    # model.to(args.device)
     if args.torch_compile:
         print("Compiling model")
         model = torch.compile(model)
