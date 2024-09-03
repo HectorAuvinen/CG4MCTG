@@ -363,16 +363,14 @@ class Block(nn.Module):
         super().__init__()
         hidden_size = config.n_embd
         inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
-        self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.attn = Attention(hidden_size, n_ctx, config, scale)
-        self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
+        self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon).to("cuda:0")
+        self.attn = Attention(hidden_size, n_ctx, config, scale).to("cuda:0")
+        self.ln_2 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon).to("cuda:0")
         if config.add_cross_attention:
             self.crossattention = Attention(hidden_size, n_ctx, config, scale, is_cross_attention=True)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
-        self.mlp = MLP(inner_dim, config)
+        self.mlp = MLP(inner_dim, config).to("cuda:1")
         # put mlp on device 1 and attention on device 0
-        self.mlp.to("cuda:1")
-        self.attn.to("cuda:0")
 
     def forward(
         self,
@@ -639,7 +637,7 @@ class GPT2Model(GPT2PreTrainedModel):
                 att_tokens_embeds = att_tokens_embeds.view(batch_size, -1)  # batch_size * (dcg_att_num * n_embd)
                 att_prompt = self.dcg_mlp(att_tokens_embeds)    # batch_size * (dcg_att_len * n_embd)
                 att_prompt = att_prompt.view(batch_size, config.dcg_att_len, config.n_embd) # batch_size * dcg_att_len, n_embd
-                task_index = torch.tensor(range(config.dcg_task_len)).to(device)
+                task_index = torch.tensor(range(config.dcg_task_len)).to("cuda:1")
                 task_index = task_index.unsqueeze(0).expand(batch_size, config.dcg_task_len)
                 task_prompt = self.dcg_prompt_embeddings(task_index)    # batch_size * dcg_task_len * n_embd
 
