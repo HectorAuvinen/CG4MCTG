@@ -62,7 +62,8 @@
 # ================================================================================
 # dataset Yelp
 # Original
-#
+# python dcg_meta.py --model_name_or_path 'gpt2-medium' --output_dir '../ckpt' --output_data_dir '../test_data' --num_train_epochs 8 --dataset 'Yelp' --unseen_combs_path '../data/Yelp/unseen.jsonl' --dataset_path '../data/Yelp/gen.jsonl' --device_num 1 --mode 'Original' --idx 0 --batch_size 2
+
 model_name_or_path=gpt2-medium
 output_dir=../ckpt
 output_data_dir=../test_data
@@ -71,7 +72,8 @@ num_train_epochs=8
 dataset=Yelp
 unseen_combs_path=../data/Yelp/unseen.jsonl
 dataset_path=../data/Yelp/gen.jsonl
-device_num=0
+device_num=1
+batch_size=2
 # mode=Hold-Out
 # idx=1
 # num_sample_combs=2
@@ -88,17 +90,20 @@ device_num=0
 #                    --mode Original \
 #                    --idx 0 \
 #
-python dcg_meta.py --model_name_or_path $model_name_or_path \
-                   --output_dir $output_dir \
-                   --output_data_dir $output_data_dir \
-                   --num_train_epochs $num_train_epochs \
-                   --dataset $dataset \
-                   --unseen_combs_path $unseen_combs_path \
-                   --dataset_path $dataset_path \
-                   --device_num $device_num \
-                   --mode Original \
-                   --idx 0 \
-                   --multi_gpu \
+
+# UNCOMMENT THIS LINE TO RUN THE ORIGINAL PROTOCOL
+# python dcg_meta.py --model_name_or_path $model_name_or_path \
+#                    --output_dir $output_dir \
+#                    --output_data_dir $output_data_dir \
+#                    --num_train_epochs $num_train_epochs \
+#                    --dataset $dataset \
+#                    --unseen_combs_path $unseen_combs_path \
+#                    --dataset_path $dataset_path \
+#                    --device_num $device_num \
+#                    --mode Original \
+#                    --idx 0 \
+#                    --batch_size $batch_size \
+#                    --multi_gpu \
 # Hold-Out
 for idx in 0 1 2 3 4 5 6 7
 do
@@ -110,9 +115,10 @@ do
                    --unseen_combs_path $unseen_combs_path \
                    --dataset_path $dataset_path \
                    --device_num $device_num \
-                    --mode Hold-Out \
-                    --idx ${idx} \
-                    --multi_gpu \
+                   --batch_size $batch_size \
+                   --mode Hold-Out \
+                   --idx ${idx} \
+                   # --multi_gpu \
 done
 # ACD
 for idx in 0 1 2 3 4 5 6 7 8 9
@@ -125,9 +131,10 @@ do
                    --unseen_combs_path $unseen_combs_path \
                    --dataset_path $dataset_path \
                    --device_num $device_num \
-                    --mode ACD \
-                    --idx ${idx} \
-                    --multi_gpu \
+                   --batch_size $batch_size \
+                   --mode ACD \
+                   --idx ${idx} \
+                   # --multi_gpu \
 done
 
 
