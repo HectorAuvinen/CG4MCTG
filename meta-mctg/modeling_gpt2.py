@@ -370,9 +370,6 @@ class Block(nn.Module):
             self.crossattention = Attention(hidden_size, n_ctx, config, scale, is_cross_attention=True)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.mlp = MLP(inner_dim, config)
-        # put mlp on device 1 and attention on device 0
-        self.mlp.to("cuda:1")
-        self.attn.to("cuda:0")
 
     def forward(
         self,
