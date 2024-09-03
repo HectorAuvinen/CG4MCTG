@@ -327,19 +327,6 @@ def train(args):
                 attention_mask = torch.tensor(attention_mask).to(args.device)
                 attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
                 attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
-                ######### ADDED ########################################################
-                print("*"*100)
-                print("*"*100)
-                print("*"*100)
-                # Print memory allocated in GB
-                print(f"Memory Allocated: {torch.cuda.memory_allocated() / (1024 ** 3):.2f} GB")
-
-                # Print memory reserved in GB
-                print(f"Memory Reserved: {torch.cuda.memory_reserved() / (1024 ** 3):.2f} GB")
-
-                # Print detailed memory summary (this is still in bytes, no need to change)
-                print(torch.cuda.memory_summary())
-                ############ ADDED #####################################################
                 dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                 logits = dic.logits
                 shift_logits = logits[:, prompt_len:-1, :].contiguous()
