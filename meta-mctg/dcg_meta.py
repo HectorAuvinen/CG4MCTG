@@ -219,14 +219,13 @@ def train(args):
             continue
         else:
             param[1].requires_grad = False
-
+    
+    # extra
     print(f"Device is {args.device}")
     print(f"Number of GPUs: {torch.cuda.device_count()}")
     print(f"Multi-gpu enabled: {args.multi_gpu}")
     
-    model.to(args.device)
-    
-    # extra
+    # model.to(args.device)
     # Check if CUDA is available
     if torch.cuda.is_available():
         num_gpus = torch.cuda.device_count()
@@ -236,6 +235,12 @@ def train(args):
             print(f"GPU {i}: {torch.cuda.get_device_name(i)} (ID: {i})")
     else:
         print("No GPUs are available.")
+    # Ensure model is using multiple GPUs
+    print(f"Model device before DataParallel: {next(model.parameters()).device}")
+
+    # Apply DataParallel
+    model = nn.DataParallel(model, device_ids=[1, 0])
+    print(f"Model device after DataParallel: {next(model.parameters()).device}")
     # extra
     
     if args.multi_gpu and torch.cuda.device_count() > 1:
@@ -820,6 +825,7 @@ def main():
     parser.add_argument("--idx", default=None, type=int)
     parser.add_argument("--debug", default=False, action='store_true')
     parser.add_argument("--debug_samples", default=10, type=int)
+    parser.add_argument("--skip_test", default=False, action='store_true')
     parser.add_argument("--multi_gpu", default=False, action='store_true')
     parser.add_argument("--torch_compile", default=False, action='store_true')
 
