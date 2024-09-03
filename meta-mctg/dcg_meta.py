@@ -219,13 +219,12 @@ def train(args):
             continue
         else:
             param[1].requires_grad = False
-    
+    model.to(args.device)
     # extra
     print(f"Device is {args.device}")
     print(f"Number of GPUs: {torch.cuda.device_count()}")
     print(f"Multi-gpu enabled: {args.multi_gpu}")
     
-    model.to(args.device)
     # Check if CUDA is available
     if torch.cuda.is_available():
         num_gpus = torch.cuda.device_count()
