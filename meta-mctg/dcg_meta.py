@@ -199,7 +199,7 @@ def prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0
     return train_dataloader
 ############# Added ########################################################
 
-def train(args,rank,world_size):
+def train(rank,args,world_size):
     ############## Added #####################################################
     print(args)
     args.device = rank
@@ -920,7 +920,7 @@ def main():
 
     ### Added #################################
     world_size = 2
-    mp.spawn(train, args=(args,world_size), nprocs=world_size)
+    mp.spawn(train, args=(args,world_size), nprocs=world_size, join=True)
     ### Added #################################
     #train(args)
 
