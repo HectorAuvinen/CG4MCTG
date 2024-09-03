@@ -1,6 +1,11 @@
 import torch
 import sys
 sys.path.append('..')
+#
+import os
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0,project_root)
+#
 from data.utils import get_train_dataset
 from transformers import GPT2Tokenizer, GPT2Config
 from modeling_gpt2 import GPT2LMHeadModel
@@ -18,6 +23,7 @@ import copy
 import json
 import math
 import os
+import torch.nn as nn
 
 def tokenize(dataset_path:list, tokenizer) -> list:
     '''
@@ -214,7 +220,19 @@ def train(args):
         else:
             param[1].requires_grad = False
 
+    print(f"Device is {args.device}")
+    print(f"Number of GPUs: {torch.cuda.device_count()}")
+    print(f"Multi-gpu enabled: {args.multi_gpu}")
+    
+    if args.multi_gpu and torch.cuda.device_count() > 1:
+        print("Let's use", torch.cuda.device_count(), "GPUs!")
+        # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
+        model = nn.DataParallel(model)
+        
     model.to(args.device)
+    if args.torch_compile:
+        print("Compiling model")
+        model = torch.compile(model)
 
     no_decay = ['bias', 'LayerNorm.weight']
     optimizer_grouped_parameters = [
@@ -346,6 +364,11 @@ def train(args):
                             # create a backup model and store the parameter after training a train batch
                             backup_model = copy.deepcopy(model)
                             backup_model.to(args.device)
+                            # 
+                            if args.torch_compile:
+                                print("Compiling backup model")
+                                backup_model = torch.compile(backup_model)
+                                
                             with torch.no_grad():
                                 for param, backup_param in zip(model.parameters(), backup_model.parameters()):
                                     if param.grad is not None:
@@ -447,14 +470,18 @@ def train(args):
                     args.epoch_name = 'dcg_meta-{}-{}-lambda={}-bs={}-epoch={}'.format(args.dataset, args.mode_name, args.lambda_s, args.batch_size * args.gradient_accumulation_steps, current_epoch)
 
                 output_dir = os.path.join(args.output_dir, args.epoch_name)
-                model_to_save = (model.module if hasattr(model, 'module') else model)
-                model_to_save.save_pretrained(output_dir)
-                config.save_pretrained(output_dir)
+                
+                if args.debug:
+                    print("In debug mode - skipping model testing and checkpointing")
+                else:
+                    model_to_save = (model.module if hasattr(model, 'module') else model)
+                    model_to_save.save_pretrained(output_dir)
+                    config.save_pretrained(output_dir)
 
-                args.finetuned_model = output_dir
+                    args.finetuned_model = output_dir
 
-                # generate phase
-                test(args)
+                    # generate phase
+                    test(args)
     else:
         '''
         number of seen combs < mini_batch. 
@@ -561,6 +588,11 @@ def train(args):
 
                         backup_model = copy.deepcopy(model)
                         backup_model.to(args.device)
+                        #
+                        if args.torch_compile:
+                            print("Compiling backup model")
+                            backup_model = torch.compile(backup_model)
+                            
                         with torch.no_grad():
                             for param, backup_param in zip(model.parameters(), backup_model.parameters()):
                                 if param.grad is not None:
@@ -772,6 +804,10 @@ def main():
     parser.add_argument("--device_num", default=0, type=int)
     parser.add_argument("--mode", default=None, type=str, choices=['Hold-Out', 'ACD', 'Few-Shot', 'Original'])
     parser.add_argument("--idx", default=None, type=int)
+    parser.add_argument("--debug", default=False, action='store_true')
+    parser.add_argument("--debug_samples", default=10, type=int)
+    parser.add_argument("--multi_gpu", default=False, action='store_true')
+    parser.add_argument("--torch_compile", default=False, action='store_true')
 
     args = parser.parse_args()
     assert args.dataset is not None
@@ -798,6 +834,11 @@ def main():
     f.close()
 
     train_dataset, mode_name , all_combs, unseen_combs = get_train_dataset(dataset_path=args.dataset_path, unseen_combs_path=args.unseen_combs_path, mode=args.mode, idx=args.idx)
+    if args.debug:
+        print("Debugging mode")
+        train_dataset = train_dataset[:args.debug_samples]
+    
+        
     seen_combs = [i for i in all_combs if i not in unseen_combs]
     args.all_combs = all_combs
     args.seen_combs = seen_combs
