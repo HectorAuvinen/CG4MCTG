@@ -25,13 +25,6 @@ import math
 import os
 import torch.nn as nn
 
-# added
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from accelerate import dispatch_model, infer_auto_device_map
-from accelerate.utils import get_balanced_memory
-from torch.cuda.amp import autocast
-
-
 def tokenize(dataset_path:list, tokenizer) -> list:
     '''
     tokenize the data, the tokenized data is formulated as (take the dataset YELP as an example):
@@ -194,7 +187,7 @@ def train(args):
     set_seed(args.seed)
 
     config = GPT2Config.from_pretrained(args.model_name_or_path)
-    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
+    tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path,device_map="auto")
     args.tokenizer = tokenizer
 
     tokenized_data = tokenize(dataset_path=args.train_dataset, tokenizer=args.tokenizer)
@@ -213,32 +206,13 @@ def train(args):
     if args.num_pseu >= len(seen_att_tokens_ids):
         args.num_pseu = len(seen_att_tokens_ids)
     
-    model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config,device_map="auto") 
-
-    max_memory = get_balanced_memory(
-        model,
-        max_memory=None,
-        #no_split_module_classes=["DecoderLayer", "Attention", "MLP", "LayerNorm", "Linear"],
-        no_split_module_classes=["Block"],
-        #dtype='float16',
-        low_zero=False,
-    )
-
-    device_map = infer_auto_device_map(
-        model,
-        max_memory=max_memory,
-        #no_split_module_classes=["DecoderLayer", "Attention", "MLP", "LayerNorm", "Linear"],
-        no_split_module_classes=["Block"],
-        dtype='float16'
-    )
-    print("max memory",max_memory)
     # set the config
     config.is_dcg = True
     config.dcg_att_num = len(label_keys)
     config.dcg_att_len = args.dcg_att_len
     config.dcg_task_len = args.dcg_task_len
-    # dtype=torch.float16
-    model = dispatch_model(model, device_map=device_map)
+    model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config,device_map="auto")
+
     # frozen parameters
     for param in model.named_parameters():
         if 'dcg' in param[0]:
