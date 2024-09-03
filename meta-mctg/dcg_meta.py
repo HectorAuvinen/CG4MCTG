@@ -229,7 +229,7 @@ def train(args):
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model, device_ids=[0, 1])
         
-    model.to(args.device)
+    # model.to(args.device)
     if args.torch_compile:
         print("Compiling model")
         model = torch.compile(model)
