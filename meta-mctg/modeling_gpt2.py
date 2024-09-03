@@ -434,7 +434,7 @@ class GPT2PreTrainedModel(PreTrainedModel):
 
     config_class = GPT2Config
     base_model_prefix = "transformer"
-    _no_split_modules = ["Block"]
+
     def __init__(self, *inputs, **kwargs):
         super().__init__(*inputs, **kwargs)
 
