@@ -25,6 +25,22 @@ import math
 import os
 import torch.nn as nn
 
+
+# Added ###############################################################
+import torch.multiprocessing as mp
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed import init_process_group, destroy_process_group
+
+def setup_ddp(rank, world_size):
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    init_process_group(backend='nccl', rank=rank, world_size=world_size)
+
+def cleanup_ddp():
+    destroy_process_group()
+    
+########################################################################
 def tokenize(dataset_path:list, tokenizer) -> list:
     '''
     tokenize the data, the tokenized data is formulated as (take the dataset YELP as an example):
@@ -174,7 +190,19 @@ def get_support_batch(support_combs:list, args) -> list:
     assert len(support_data) == support_num
     return support_data
 
-def train(args):
+############# Added ########################################################
+def prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0):
+    train_dataset = tokendataset(tokenized_data)
+    #train_sampler = torch.utils.data.RandomSampler(train_dataset)
+    train_sampler = DistributedSampler(train_dataset, num_replicas=world_size, rank=rank,shuffle=False,drop_last=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, pin_memory=pin_memory,num_workers=num_workers,drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler,shuffle=False)
+    return train_dataloader
+############# Added ########################################################
+
+def train(args,rank,world_size):
+    ############## Added #####################################################
+    args.device = rank
+    ############## Added #####################################################
     '''
     training phase
     '''
@@ -191,10 +219,14 @@ def train(args):
     args.tokenizer = tokenizer
 
     tokenized_data = tokenize(dataset_path=args.train_dataset, tokenizer=args.tokenizer)
-    train_dataset = tokendataset(tokenized_data)
-    train_sampler = torch.utils.data.RandomSampler(train_dataset)
-    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler)
-
+    #train_dataset = tokendataset(tokenized_data)
+    #train_sampler = torch.utils.data.RandomSampler(train_dataset)
+    #train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler)
+    ############# Added ########################################################
+    train_dataloader = prep_data(tokenized_data,args,rank,world_size,pin_memory=False,num_workers=0)
+    setup_ddp(rank=rank,world_size=world_size)
+    ############# Added ########################################################
+    
     # store data by labels (attribute combination)
     label_to_tokenized_data = defaultdict(deque)
     for item in tokenized_data:
@@ -235,13 +267,21 @@ def train(args):
     else:
         print("No GPUs are available.")
     
-    model.to(args.device)
+    # model.to(args.device)
+    ############# Added ########################################################
+    model.to(rank)
+    model = DDP(model, device_ids=[rank],output_device=rank,find_unused_parameters=True)
+    ############# Added ########################################################
+    #if args.ddp:
+    #    model = DDP(model, device_ids=[])
     if args.multi_gpu and torch.cuda.device_count() > 1:
         print(f"Model device before DataParallel: {next(model.parameters()).device}")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
         # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model, device_ids=[1, 0])
         print(f"Model device after DataParallel: {next(model.parameters()).device}")
+    
+    
     # extra    
     # model.to(args.device)
     if args.torch_compile:
@@ -277,7 +317,6 @@ def train(args):
     mini_batch = args.batch_size * args.gradient_accumulation_steps
     if len(args.seen_combs) < mini_batch:
         args.sample_train = True
-    
     if not args.sample_train:
         '''
         number of seen_combs >= mini_batch. Training using random traversal of the training data
@@ -294,6 +333,9 @@ def train(args):
 
         current_epoch = 0
         for epoch in trange(int(args.num_train_epochs), desc='Epoch'):
+            ######## Added ########################################################
+            train_dataloader.sampler.set_epoch(epoch)
+            ######## Added ########################################################
             current_epoch += 1
 
             current_combs = list()
@@ -728,7 +770,11 @@ def train(args):
                 test(args)
     
     logger.info(' global_step = %s, average loss = %s', global_step, tr_loss / global_step)
-
+    ############ Added ########################################################
+    cleanup_ddp()
+    ############ Added ########################################################
+    
+    
 def test(args):
     set_seed(args.test_seed)
     model = GPT2LMHeadModel.from_pretrained(args.finetuned_model).to(args.device)
@@ -871,7 +917,11 @@ def main():
     args.mode_name = mode_name
     args.train_dataset = train_dataset
 
-    train(args)
+    ### Added #################################
+    world_size = 2
+    mp.spawn(train, args=(world_size, args), nprocs=world_size)
+    ### Added #################################
+    #train(args)
 
 if __name__ == "__main__":
     main()
