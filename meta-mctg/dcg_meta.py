@@ -361,10 +361,7 @@ def train(args):
                 tr_loss += loss.item()
                 tr_loss_lm += loss_lm.item()
                 tr_loss_dis += loss_dis.item()
-                print("tr_loss", tr_loss)
-                print("tr_loss_lm", tr_loss_lm)
-                print("tr_loss_dis", tr_loss_dis)
-                
+
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
                     #scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
