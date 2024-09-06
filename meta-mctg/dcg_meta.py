@@ -428,7 +428,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))
+                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -662,7 +662,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))
+                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -672,7 +672,7 @@ def train(args):
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
                                     support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
-                                    s_loss = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))
+                                    s_loss = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
                                 loss_support_dis = loss_support_lm + torch.log(sum(s_loss_set))
