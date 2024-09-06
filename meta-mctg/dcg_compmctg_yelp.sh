@@ -118,6 +118,9 @@ do
                    --batch_size $batch_size \
                    --mode Hold-Out \
                    --idx ${idx} \
+                   --num_sample_combs 2 \
+                   --lambda_s 0.01 \
+                   --half_precision
                    # --multi_gpu \
 done
 # ACD
