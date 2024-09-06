@@ -24,6 +24,7 @@ import json
 import math
 import os
 import torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
 
 def tokenize(dataset_path:list, tokenizer) -> list:
     '''
@@ -185,16 +186,14 @@ def train(args):
         level=logging.INFO,
     )
     set_seed(args.seed)
-
+    scaler = GradScaler()
     config = GPT2Config.from_pretrained(args.model_name_or_path)
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
     args.tokenizer = tokenizer
-
     tokenized_data = tokenize(dataset_path=args.train_dataset, tokenizer=args.tokenizer)
     train_dataset = tokendataset(tokenized_data)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler)
-
     # store data by labels (attribute combination)
     label_to_tokenized_data = defaultdict(deque)
     for item in tokenized_data:
@@ -212,7 +211,6 @@ def train(args):
     config.dcg_att_len = args.dcg_att_len
     config.dcg_task_len = args.dcg_task_len
     model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config)
-
     # frozen parameters
     for param in model.named_parameters():
         if 'dcg' in param[0]:
@@ -327,32 +325,41 @@ def train(args):
                 attention_mask = torch.tensor(attention_mask).to(args.device)
                 attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
                 attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
-                dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
-                logits = dic.logits
-                shift_logits = logits[:, prompt_len:-1, :].contiguous()
-                labels = input_ids[:, 1:].contiguous()
-                loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
-
-                pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
-                loss_set = list()
-                loss_set.append(torch.exp(-loss_lm))
-                for pseu_set in pseu_combinations_set:
-                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
+            
+                with autocast():
                     dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
-                    loss_set.append(torch.exp(-loss))
-                    
-                loss_dis = loss_lm + torch.log(sum(loss_set))
-                loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
+                    loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
 
-                loss.backward()
-                tr_loss += loss.item()
-                tr_loss_lm += loss_lm.item()
-                tr_loss_dis += loss_dis.item()
+                    pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
+                    loss_set = list()
+                    loss_set.append(torch.exp(-loss_lm))
+                    for pseu_set in pseu_combinations_set:
+                        att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
+                        dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
+                        logits = dic.logits
+                        shift_logits = logits[:, prompt_len:-1, :].contiguous()
+                        labels = input_ids[:, 1:].contiguous()
+                        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+                        loss_set.append(torch.exp(-loss))
+                        
+                        loss_dis = loss_lm + torch.log(sum(loss_set))
+                        loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
 
+                        if args.clear_cache:
+                            torch.cuda.empty_cache()
+                
+                scaler.scale(loss).backward()
+                tr_loss += loss.detach().item()
+                tr_loss_lm += loss_lm.detach().item()
+                tr_loss_dis += loss_dis.detach().item()
+                # loss.backward()
+                # tr_loss += loss.item()
+                # tr_loss_lm += loss_lm.item()
+                # tr_loss_dis += loss_dis.item()
+                
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
@@ -361,6 +368,8 @@ def train(args):
                         optimizer.step()
                         scheduler.step()
                         model.zero_grad()
+                        if args.clear_cache():
+                            torch.cuda.empty_cache()
                     else:
                         # use meta_mctg training
                         current_combs = [current_combs[i] for i in range(len(current_combs)) if current_combs[i] not in current_combs[:i]]
@@ -832,6 +841,7 @@ def main():
     parser.add_argument("--skip_test", default=False, action='store_true')
     parser.add_argument("--multi_gpu", default=False, action='store_true')
     parser.add_argument("--torch_compile", default=False, action='store_true')
+    parser.add_argument("--clear_cache", default=False, action='store_true')
 
     args = parser.parse_args()
     assert args.dataset is not None
