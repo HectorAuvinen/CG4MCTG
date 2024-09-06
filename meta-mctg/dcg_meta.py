@@ -333,7 +333,7 @@ def train(args):
                 logits = dic.logits
                 shift_logits = logits[:, prompt_len:-1, :].contiguous()
                 labels = input_ids[:, 1:].contiguous()
-                loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+                loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
 
                 pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
                 loss_set = list()
@@ -344,7 +344,7 @@ def train(args):
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
                     loss_set.append(torch.exp(-loss))
                     
                     loss_dis = loss_lm + torch.log(sum(loss_set))
@@ -361,6 +361,9 @@ def train(args):
                 tr_loss += loss.item()
                 tr_loss_lm += loss_lm.item()
                 tr_loss_dis += loss_dis.item()
+                print("tr_loss", tr_loss)
+                print("tr_loss_lm", tr_loss_lm)
+                print("tr_loss_dis", tr_loss_dis)
                 
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
                     #scaler.unscale_(optimizer)
