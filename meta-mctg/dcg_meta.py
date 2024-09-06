@@ -211,7 +211,8 @@ def train(args):
     config.dcg_att_len = args.dcg_att_len
     config.dcg_task_len = args.dcg_task_len
     model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config)
-    model.half()
+    if args.half_precision:
+        model.half()
     # frozen parameters
     for param in model.named_parameters():
         if 'dcg' in param[0]:
@@ -532,15 +533,7 @@ def train(args):
             current_epoch += 1
             backup_label_to_tokenized_data = copy.deepcopy(label_to_tokenized_data)
             num_combs_of_sample_combs = math.comb(len(args.seen_combs), num_sample_combs)
-            print("num_sample_combs", num_sample_combs)
-            print("len(args.seen_combs)", len(args.seen_combs))
-            print("num_combs_of_sample_combs", num_combs_of_sample_combs)
-            print("num_sample_combs", num_sample_combs)
-            print("new_gradient_accumulation_steps", new_gradient_accumulation_steps)
-            print("mini_batch", mini_batch)
             samples_per_comb_of_sample_combs = int(len(tokenized_data) / num_combs_of_sample_combs / num_sample_combs)
-            print("len(tokenized_data)", len(tokenized_data))
-            print("samples_per_comb_of_sample_combs", samples_per_comb_of_sample_combs)
             combs_of_comb_list = list()
             all_combs_of_comb = list(itertools.combinations(args.seen_combs, num_sample_combs))
             for item in all_combs_of_comb:
@@ -548,7 +541,6 @@ def train(args):
                     combs_of_comb_list.append(item)
             # we ignore the residual data in the training set
             residual_num_per_comb = int((len(tokenized_data) - samples_per_comb_of_sample_combs * num_combs_of_sample_combs * num_sample_combs) / len(args.seen_combs))    
-            print("combs_of_comb_list", combs_of_comb_list)
             random.shuffle(combs_of_comb_list)
             assert samples_per_comb_of_sample_combs >= new_gradient_accumulation_steps
 
@@ -848,6 +840,7 @@ def main():
     parser.add_argument("--multi_gpu", default=False, action='store_true')
     parser.add_argument("--torch_compile", default=False, action='store_true')
     parser.add_argument("--clear_cache", default=False, action='store_true')
+    parser.add_argument("--half_precision", default=False, action='store_true')
 
     args = parser.parse_args()
     assert args.dataset is not None
