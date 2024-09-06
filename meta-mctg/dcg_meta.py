@@ -327,53 +327,53 @@ def train(args):
                 attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
                 attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
             
-                with autocast():
+                #with autocast():
+                dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
+                logits = dic.logits
+                shift_logits = logits[:, prompt_len:-1, :].contiguous()
+                labels = input_ids[:, 1:].contiguous()
+                loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+
+                pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
+                loss_set = list()
+                loss_set.append(torch.exp(-loss_lm))
+                for pseu_set in pseu_combinations_set:
+                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
                     dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
+                    loss_set.append(torch.exp(-loss))
+                    
+                    loss_dis = loss_lm + torch.log(sum(loss_set))
+                    loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
 
-                    pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
-                    loss_set = list()
-                    loss_set.append(torch.exp(-loss_lm))
-                    for pseu_set in pseu_combinations_set:
-                        att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
-                        dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
-                        logits = dic.logits
-                        shift_logits = logits[:, prompt_len:-1, :].contiguous()
-                        labels = input_ids[:, 1:].contiguous()
-                        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))
-                        loss_set.append(torch.exp(-loss))
-                        
-                        loss_dis = loss_lm + torch.log(sum(loss_set))
-                        loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
-
-                        if args.clear_cache:
-                            torch.cuda.empty_cache()
+                    if args.clear_cache:
+                        torch.cuda.empty_cache()
                 
-                scaler.scale(loss).backward()
-                tr_loss += loss.detach().item()
-                tr_loss_lm += loss_lm.detach().item()
-                tr_loss_dis += loss_dis.detach().item()
-                # loss.backward()
-                # tr_loss += loss.item()
-                # tr_loss_lm += loss_lm.item()
-                # tr_loss_dis += loss_dis.item()
+                #scaler.scale(loss).backward()
+                #tr_loss += loss.detach().item()
+                #tr_loss_lm += loss_lm.detach().item()
+                #tr_loss_dis += loss_dis.detach().item()
+                loss.backward()
+                tr_loss += loss.item()
+                tr_loss_lm += loss_lm.item()
+                tr_loss_dis += loss_dis.item()
                 
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
-                    scaler.unscale_(optimizer)
+                    #scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                     if args.meta_mctg is not True:
-                        scaler.step(optimizer)
-                        scaler.update()
-                        optimizer.zero_grad()
-                        scheduler.step()
-                        # common dcg training
-                        #optimizer.step()
+                        #scaler.step(optimizer)
+                        #scaler.update()
+                        #optimizer.zero_grad()
                         #scheduler.step()
-                        #model.zero_grad()
+                        # common dcg training
+                        optimizer.step()
+                        scheduler.step()
+                        model.zero_grad()
                         if args.clear_cache:
                             torch.cuda.empty_cache()
                     else:
