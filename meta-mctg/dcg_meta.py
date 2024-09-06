@@ -361,13 +361,18 @@ def train(args):
                 # tr_loss_dis += loss_dis.item()
                 
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
+                    scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                     if args.meta_mctg is not True:
-                        # common dcg training
-                        optimizer.step()
+                        scaler.step(optimizer)
+                        scaler.update()
+                        optimizer.zero_grad()
                         scheduler.step()
-                        model.zero_grad()
+                        # common dcg training
+                        #optimizer.step()
+                        #scheduler.step()
+                        #model.zero_grad()
                         if args.clear_cache:
                             torch.cuda.empty_cache()
                     else:
