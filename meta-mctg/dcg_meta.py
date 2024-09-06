@@ -368,7 +368,7 @@ def train(args):
                         optimizer.step()
                         scheduler.step()
                         model.zero_grad()
-                        if args.clear_cache():
+                        if args.clear_cache:
                             torch.cuda.empty_cache()
                     else:
                         # use meta_mctg training
