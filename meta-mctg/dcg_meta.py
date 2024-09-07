@@ -723,7 +723,8 @@ def train(args):
                         print(logs)
             
             if current_epoch <= args.num_train_epochs:
-                args.epoch_name = 'dcg_sample_meta-{}-{}-lambda={}-{}-bs={}-epoch={}'.format(args.dataset_name, args.mode_name, args.lambda_s, args.num_sample_combs, args.batch_size * args.gradient_accumulation_steps, current_epoch)
+                # args.dataset_name vs args.dataset
+                args.epoch_name = 'dcg_sample_meta-{}-{}-lambda={}-{}-bs={}-epoch={}'.format(args.dataset, args.mode_name, args.lambda_s, args.num_sample_combs, args.batch_size * args.gradient_accumulation_steps, current_epoch)
 
                 output_dir = os.path.join(args.output_dir, args.epoch_name)
                 model_to_save = (model.module if hasattr(model, 'module') else model)
