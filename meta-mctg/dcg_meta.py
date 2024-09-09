@@ -853,6 +853,7 @@ def main():
 
     args.device = torch.device("cuda:{}".format(args.device_num))
 
+    """ 
     unseen_combs_dict = {}
     f = open(args.unseen_combs_path, 'r')
     for item in f.readlines():
@@ -866,7 +867,8 @@ def main():
         else:
             unseen_combs_dict[mode].append((unseen_combs, mode, idx))
     f.close()
-
+    """
+    # read the training dataset in and filter out unseen combinations based on ID which defines a fixed set of unseen combinations
     train_dataset, mode_name , all_combs, unseen_combs = get_train_dataset(dataset_path=args.dataset_path, unseen_combs_path=args.unseen_combs_path, mode=args.mode, idx=args.idx)
     if args.debug:
         print("Debugging mode")
