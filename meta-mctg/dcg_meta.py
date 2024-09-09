@@ -303,7 +303,7 @@ def get_support_combs(current_combs:list, seen_combs:list, label_keys:list) -> l
 def get_support_batch(support_combs:list, args) -> list:
     support_data = list()
     support_num = args.batch_size * args.gradient_accumulation_steps
-    all_support_att_tokens_ids = get_att_tokens_ids(combs=support_combs, tokenizer=args.tokenizer)
+    all_support_att_tokens_ids = get_att_tokens_ids(combinations=support_combs, tokenizer=args.tokenizer)
     if args.num_pseu >= len(all_support_att_tokens_ids):
         args.support_num_pseu = len(all_support_att_tokens_ids)
     else:
@@ -690,7 +690,7 @@ def train(args):
         new_batch_size = num_sample_combs
         
         # eos token ids
-        eos_token_ids = create_eos_token_tensor(new_batch_size, args)
+        eos_token_ids = create_eos_token_tensor(new_batch_size).to(args.device, dtype=torch.long)
         
         current_epoch = 0
         for epoch in trange(int(args.num_train_epochs), desc='Epoch'): 
@@ -743,13 +743,15 @@ def train(args):
 
                     #eos_token_ids = torch.tensor(tokenizer.encode(tokenizer.eos_token))
                     #eos_token_ids = eos_token_ids.expand(new_batch_size, eos_token_ids.shape[0]).to(args.device)
-                    input_ids = torch.tensor(input_ids).to(args.device)
+                    #input_ids = torch.tensor(input_ids).to(args.device)
+                    input_ids = torch.stack(input_ids).to(args.device)
                     input_ids = torch.cat([eos_token_ids, input_ids], dim=-1)
 
                     prompt_len = args.dcg_att_len + args.dcg_task_len
                     eos_token_mask = torch.tensor([1]).expand(new_batch_size, 1).to(args.device)
                     prompt_mask = torch.tensor([1] * prompt_len).expand(new_batch_size, prompt_len).to(args.device)
-                    attention_mask = torch.tensor(attention_mask).to(args.device)
+                    # attention_mask = torch.tensor(attention_mask).to(args.device)
+                    attention_mask = torch.stack(attention_mask).to(args.device)
                     attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
                     attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
 
@@ -757,7 +759,7 @@ def train(args):
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                    loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
                     
                     pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
                     loss_set = list()
@@ -767,7 +769,7 @@ def train(args):
                         dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                         logits = dic.logits
                         shift_logits = logits[:, prompt_len:-1, :].contiguous()
-                        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                        loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
                         loss_set.append(torch.exp(-loss))
                     
                     loss_dis = loss_lm + torch.log(sum(loss_set))
@@ -795,7 +797,7 @@ def train(args):
 
                         current_combs = [current_combs[i] for i in range(len(current_combs)) if current_combs[i] not in current_combs[:i]]
                         support_combs = get_support_combs(current_combs=current_combs, seen_combs=args.seen_combs, label_keys=label_keys)
-                        all_support_att_tokens_ids = get_att_tokens_ids(combs=support_combs, tokenizer=tokenizer)
+                        all_support_att_tokens_ids = get_att_tokens_ids(combinations=support_combs, tokenizer=tokenizer)
                         if len(support_combs) == 0:
                             pass
                         else:
@@ -817,9 +819,11 @@ def train(args):
                                         support_att_tokens_ids = torch.cat([support_att_tokens_ids, support_label_ids[key]], dim=-1)
                                 support_att_tokens_ids = support_att_tokens_ids.to(args.device)
 
-                                support_input_ids = torch.tensor(support_input_ids).to(args.device)
+                                #support_input_ids = torch.tensor(support_input_ids).to(args.device)
+                                support_input_ids = torch.stack(support_input_ids).to(args.device)
                                 support_input_ids = torch.cat([eos_token_ids, support_input_ids], dim=-1)
-                                support_attention_mask = torch.tensor(support_attention_mask).to(args.device)
+                                #support_attention_mask = torch.tensor(support_attention_mask).to(args.device)
+                                support_attention_mask = torch.stack(support_attention_mask).to(args.device)
                                 support_attention_mask = torch.cat([prompt_mask, support_attention_mask], dim=-1)
                                 support_attention_mask = torch.cat([eos_token_mask, support_attention_mask], dim=-1)
 
@@ -827,7 +831,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -837,7 +841,7 @@ def train(args):
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
                                     support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
-                                    s_loss = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
                                 loss_support_dis = loss_support_lm + torch.log(sum(s_loss_set))
