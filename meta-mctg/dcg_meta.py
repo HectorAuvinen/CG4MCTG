@@ -26,7 +26,50 @@ import os
 import torch.nn as nn
 from torch.cuda.amp import autocast, GradScaler
 
-def tokenize(dataset_path:list, tokenizer) -> list:
+# MOVE TO CONSTANTS
+EOS_TOKEN_ID = 50256
+# MOVE TO CONSTANTS
+
+
+def check_tensor_deep_equality(tensor1, tensor2,args):
+    """
+    Check if two tensors have the same shape, dtype, device, and content, 
+    and ensure each element has the same value and dtype.
+    
+    Args:
+    tensor1 (torch.Tensor): First tensor to compare.
+    tensor2 (torch.Tensor): Second tensor to compare.
+    
+    Returns:
+    dict: A dictionary containing the comparison results.
+    """
+    if tensor1.device != args.device:
+        tensor1 = tensor1.to(args.device)
+    if tensor2.device != args.device:
+        tensor2 = tensor2.to(args.device)
+    result = {
+        'same_shape': tensor1.shape == tensor2.shape,
+        'same_dtype': tensor1.dtype == tensor2.dtype,
+        'same_device': tensor1.device == tensor2.device,
+        'same_content': torch.equal(tensor1, tensor2)
+    }
+    
+    # If they don't have the same dtype or shape, no need to proceed further
+    if not result['same_shape'] or not result['same_dtype']:
+        result['same_elements'] = False
+        return result
+    
+    # Now compare element by element (although rare, this is useful for in-depth checks)
+    result['same_elements'] = True
+    for idx, (elem1, elem2) in enumerate(zip(tensor1.flatten(), tensor2.flatten())):
+        if elem1.item() != elem2.item() or type(elem1.item()) != type(elem2.item()):
+            result['same_elements'] = False
+            result[f'difference_at_idx_{idx}'] = (elem1.item(), elem2.item())
+            break  # Exit early if we find a difference
+
+    return result
+
+def tokenize(dataset_list:list, tokenizer) -> list:
     '''
     tokenize the data, the tokenized data is formulated as (take the dataset YELP as an example):
     [
@@ -41,63 +84,176 @@ def tokenize(dataset_path:list, tokenizer) -> list:
     ]
     '''
     tokenized_data = list()
-    for dic in tqdm(dataset_path, desc='Tokenizing'):
+    for dic in tqdm(dataset_list, desc='Tokenizing'):
         new_dic = {}
-        new_dic['text'] = tokenizer.encode(dic['review'], max_length=512, truncation=True)
-        attribute_keys = list(dic.keys())[:]
-        attribute_keys.remove('review')
+        new_dic['text'] = tokenizer.encode(dic['review'], max_length=512, truncation=True) # tokenize the text (review)
+        attribute_keys = list(dic.keys())[:] # copy all attribute keys into a list
+        attribute_keys.remove('review') # removing the text
         new_dic['comb'] = dict()
         for key in attribute_keys:
-            new_dic[key] = tokenizer.encode(' ' + dic[key])
+            new_dic[key] = tokenizer.encode(' ' + dic[key]) # tokenize the attribute value (e.g. positive)
             new_dic['comb'][key] = dic[key] 
-        tokenized_data.append(new_dic)
+        tokenized_data.append(new_dic) # after going through all the keys, you have something like {"text": [4124, 5551, 2781, 9536], "comb", {'sentiment': 'Positive', 'pronoun': 'singular', 'tense': 'Present'}, "sentiment": [111], "pronoun": [222], "tense": [333]}
     return tokenized_data
 
-def padding_fuse_fn(data_list:list) -> dict:
+
+def freeze_non_peft_modules(model, peft_modules):
+    for name, param in model.named_parameters():
+        if not any([module in name for module in peft_modules]):
+            param.requires_grad = False
+# frozen parameters
+"""    
+for param in model.named_parameters():
+    if 'dcg' in param[0]:
+        continue
+    else:
+        param[1].requires_grad = False
+"""
+
+
+"""  
+no_decay = ['bias', 'LayerNorm.weight']
+optimizer_grouped_parameters = [
+    {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+        'weight_decay': args.weight_decay},
+    {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+]"""
+
+def define_parameters(args, model):
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in args.no_decay)],
+        'weight_decay': args.weight_decay},
+        {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in args.no_decay)], 'weight_decay': 0.0}
+    ]
+    return optimizer_grouped_parameters
+
+def map_att_combos_to_samples(tokenized_data:list) -> dict:
+    label_to_tokenized_data = defaultdict(deque)
+    for item in tokenized_data:
+        label_to_tokenized_data[json.dumps(item['comb'])].append(item) # collect all samples for specific attribute combination into a dict
+    return label_to_tokenized_data
+#label_to_tokenized_data = defaultdict(deque)
+#for item in tokenized_data:
+#    label_to_tokenized_data[json.dumps(item['comb'])].append(item) # collect all samples for specific attribute combination into a dict
+
+def create_eos_token_tensor(batch_size: int) -> torch.Tensor:
+    eos_token_ids = torch.full((batch_size, 1), EOS_TOKEN_ID,dtype=torch.long) # .to(args.device)
+    return eos_token_ids
+
+def prepend_eos_token(input_ids, eos_token_ids):
+    if not isinstance(input_ids, torch.Tensor):
+        input_ids = torch.tensor(input_ids)
+    input_ids = torch.cat([eos_token_ids, input_ids], dim=-1)
+    return input_ids
+
+def get_train_steps(train_dataset, args):
+    return math.floor(len(train_dataset) / (args.batch_size * args.gradient_accumulation_steps)) * args.num_train_epochs
+
+def get_warmup_steps(num_train_steps, args):
+    return math.floor(num_train_steps * args.warmup_rate)
+
+def get_mini_batch_size(args):
+    return args.batch_size * args.gradient_accumulation_steps
+
+def log_trainable_params(model,logger):
+    for name, param in model.named_parameters():
+        if param.requires_grad:
+            logger.info(f"{name}: {param.numel()}")
+
+def normal_train_log(args):
+    if not args.meta_mctg:
+        print("="*100)
+        print("Apply Common Training")
+        print("="*100)
+    else:
+        print("="*100)
+        print("Apply Meta Training")
+        print("="*100)
+
+def sample_train_log():
+    print("="*100)
+    print("Applying Sample Meta Training")
+    print("="*100)    
+
+def padding_fuse_fn(data_list:list,pad_token = 50256) -> dict:
     '''
     padding function
     '''
-    input_ids = list()
-    attention_masks = list()
-    text_length = list()
-    labels = dict()
-    combs = list()
-
-    key_list = list(data_list[0].keys())
-    key_list.remove('text')
-    for key in key_list:
-        labels[key] = list()
-
+    # input_ids = list()
+    # attention_masks = list()
+    # text_length = list()
+    # labels = dict() 
+    # combs = list() 
+    # 
+    # key_list = list(data_list[0].keys())
+    # key_list.remove('text')
+    # for key in key_list:
+    #     labels[key] = list()
+    key_list = [key for key in data_list[0].keys() if key != 'text']
+    input_ids, attention_masks, combs, text_length = [], [], [], []
+    
+    labels = {key: [] for key in key_list}
+    
+    # go over all batch samples
     for item in data_list:
+        # collect text length and attribute combinations
         text_length.append(len(item['text']))
         combs.append(item['comb'])
+        # collect individual attribute values
         for key in key_list:
             labels[key].append(item[key])
+            
+    # store maximum text length in batch        
     max_text_len = max(text_length)
-    for i, item in enumerate(data_list):
-        text_pad_len = max_text_len - text_length[i]
-        attention_mask = [1] * text_length[i] + [0] * text_pad_len# [50256] * text_pad_len
-        text = item["text"] + [50256] * text_pad_len
-
-        input_ids.append(text)
-        attention_masks.append(attention_mask)
     
-    batch = dict()
-    batch['input_ids'] = input_ids
-    batch['attention_mask'] = attention_masks
-    batch['comb'] = combs
-    for key in key_list:
-        batch[key] = labels[key]
 
+    # go over all batch samples
+    for i, item in enumerate(data_list):
+        # calculate difference between longest text length and current text length
+        text_tensor = torch.tensor(item["text"])
+        pad_len = max_text_len - text_tensor.size(0)
+        padded_text = torch.nn.functional.pad(text_tensor, (0, pad_len), value=pad_token)
+        attention_mask = torch.cat([torch.ones(text_tensor.size(0),dtype=torch.int), torch.zeros(pad_len,dtype=torch.long)])
+        input_ids.append(padded_text)
+        attention_masks.append(attention_mask)
+        
+        # previous
+        # text_pad_len = max_text_len - text_length[i]
+        # attention mask will be 1s for text length and 0s for padding
+        # attention_mask = [1] * text_length[i] + [0] * text_pad_len # [50256] * text_pad_len
+        # pad actual text with eos tokens to match maximum length
+        # text = item["text"] + [50256] * text_pad_len
+        # collect input ids (tokens) and attention masks
+        # assert text == padded_text.tolist()
+        # assert attention_mask == attention_mask_2.tolist()
+        # input_ids.append(text)
+        # attention_masks.append(attention_mask)
+    
+    batch = {
+        'input_ids': input_ids,
+        'attention_mask': attention_masks,
+        'comb': combs
+    }
+    batch.update(labels)
+    
+    # batch = dict()
+    # batch['input_ids'] = input_ids
+    # batch['attention_mask'] = attention_masks
+    # batch['comb'] = combs
+    
+    # for key in key_list:
+    #     batch[key] = labels[key]
+    # assert batch == batch_2
+    
     return batch
 
 class tokendataset(Dataset):
-    def __init__(self, dataset_path):
-        self.file_path = dataset_path
-        file_row = len(dataset_path)
+    def __init__(self, dataset_list):
+        # self.file_path = dataset_list
+        # file_row = len(dataset_list)
 
-        self.file_row = file_row
-        self.dataset = dataset_path
+        self.file_row = len(dataset_list)
+        self.dataset = dataset_list
 
     def __len__(self):
         return self.file_row
@@ -111,16 +267,16 @@ def set_seed(seed:int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
 
-def get_att_tokens_ids(combs:list, tokenizer) -> list:
+def get_att_tokens_ids(combinations:list, tokenizer: GPT2Tokenizer) -> list:
     '''
     encode attribute tokens
     '''
     res_att_tokens_ids = list()
-    for item in combs:
+    for item in combinations:
         att_tokens_ids = list()
-        for key in list(item.keys()):
+        for key in list(item.keys()): # e.g. ['sentiment', 'pronoun', 'tense']
             assert len(tokenizer.encode(' ' + item[key])) == 1
-            att_tokens_ids.append(tokenizer.encode(' ' + item[key])[0])
+            att_tokens_ids.append(tokenizer.encode(' ' + item[key])[0]) # encode attribute value e.g. positive
         res_att_tokens_ids.append(att_tokens_ids)
     return res_att_tokens_ids
 
@@ -185,80 +341,79 @@ def train(args):
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+    # set seed, define config and tokenizer
     set_seed(args.seed)
-    scaler = GradScaler()
     config = GPT2Config.from_pretrained(args.model_name_or_path)
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
     args.tokenizer = tokenizer
-    tokenized_data = tokenize(dataset_path=args.train_dataset, tokenizer=args.tokenizer)
+    
+    # tokenize dataset, construct dataset and dataloader
+    tokenized_data = tokenize(dataset_list=args.train_dataset, tokenizer=args.tokenizer)
     train_dataset = tokendataset(tokenized_data)
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=train_sampler)
-    # store data by labels (attribute combination)
-    label_to_tokenized_data = defaultdict(deque)
-    for item in tokenized_data:
-        label_to_tokenized_data[json.dumps(item['comb'])].append(item)
-    args.label_to_tokenized_data = label_to_tokenized_data
     
-    seen_att_tokens_ids = get_att_tokens_ids(combs=args.seen_combs, tokenizer=tokenizer)
+    # store data by labels (attribute combination)
+    args.label_to_tokenized_data = map_att_combos_to_samples(tokenized_data)
+    
+    # number of unique seen attribute token combinations
+    # TODO: go over again and write down. What does this do exactly?
+    seen_att_tokens_ids = get_att_tokens_ids(combinations=args.seen_combs, tokenizer=tokenizer)
+    
+    # hack to just get all attribute keys e.g. ["sentiment", "pronoun", "tense"]
     label_keys = list(args.all_combs[0].keys())
+    
+    # TODO: ...
     if args.num_pseu >= len(seen_att_tokens_ids):
         args.num_pseu = len(seen_att_tokens_ids)
     
     # set the config
     config.is_dcg = True
-    config.dcg_att_num = len(label_keys)
-    config.dcg_att_len = args.dcg_att_len
-    config.dcg_task_len = args.dcg_task_len
+    config.dcg_att_num = len(label_keys) # number of attributes
+    config.dcg_att_len = args.dcg_att_len # attribute prompt length (6 with yelp)
+    config.dcg_task_len = args.dcg_task_len # task prompt length (44)
+    
+    # initialize model
     model = GPT2LMHeadModel.from_pretrained(args.model_name_or_path, config=config)
+    
+    # half precision. TODO: try automatic mixed precision
     if args.half_precision:
         model.half()
-    # frozen parameters
-    for param in model.named_parameters():
-        if 'dcg' in param[0]:
-            continue
-        else:
-            param[1].requires_grad = False
     
-    # extra
-    print(f"Device is {args.device}")
-    print(f"Number of GPUs: {torch.cuda.device_count()}")
-    print(f"Multi-gpu enabled: {args.multi_gpu}")
     
-    # Check if CUDA is available
-    if torch.cuda.is_available():
-        num_gpus = torch.cuda.device_count()
-        print(f"Number of available GPUs: {num_gpus}")
-
-        for i in range(num_gpus):
-            print(f"GPU {i}: {torch.cuda.get_device_name(i)} (ID: {i})")
-    else:
-        print("No GPUs are available.")
+    # freeze parameters
+    args.peft_modules = ["dcg"]
+    freeze_non_peft_modules(model, args.peft_modules)
     
+    # log params for checking
+    log_trainable_params(model, logger)
+    
+    # device stuff including multi-gpu
     model.to(args.device)
+    
     if args.multi_gpu and torch.cuda.device_count() > 1:
-        print(f"Model device before DataParallel: {next(model.parameters()).device}")
         print("Let's use", torch.cuda.device_count(), "GPUs!")
-        # dim = 0 [30, xxx] -> [10, ...], [10, ...], [10, ...] on 3 GPUs
         model = nn.DataParallel(model, device_ids=[1, 0])
-        print(f"Model device after DataParallel: {next(model.parameters()).device}")
-    # extra    
-    # model.to(args.device)
+    
     if args.torch_compile:
         print("Compiling model")
         model = torch.compile(model)
-
-    no_decay = ['bias', 'LayerNorm.weight']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-         'weight_decay': args.weight_decay},
-        {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-    ]
+    
+    # define weight decay stuff
+    args.no_decay = ['bias', 'LayerNorm.weight']
+    optimizer_grouped_parameters = define_parameters(args, model)
+    
+    # define optimizer
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
-    num_train_steps = math.floor(len(train_dataset) / (
-            args.batch_size * args.gradient_accumulation_steps)) * args.num_train_epochs
-    num_warmup_steps = math.floor(num_train_steps * args.warmup_rate)
+    
+    # define number of total training steps and number of warmup steps
+    num_train_steps = get_train_steps(train_dataset, args)
+    num_warmup_steps = get_warmup_steps(num_train_steps, args)
+    
+    # define lr scheduler
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_train_steps)
+    
+    # initialize all losses
     global_step = 0
     tr_loss, logging_loss = 0.0, 0.0
     tr_loss_lm, logging_loss_lm = 0.0, 0.0
@@ -266,111 +421,117 @@ def train(args):
     tr_sloss, logging_sloss = 0.0, 0.0
     tr_sloss_lm, logging_sloss_lm = 0.0, 0.0 
     tr_sloss_dis, logging_sloss_dis = 0.0, 0.0
+    
+    # make sure model is reset
     model.train()
     model.zero_grad()
-    loss_fct = CrossEntropyLoss(ignore_index=0)
-    args.loss_fct = loss_fct
-    logger.info('start_training')
-    print("args.batch_size", args.batch_size)
-    print("args.gradient_accumulation_steps", args.gradient_accumulation_steps)
-    print("len(args.seen_combs)", len(args.seen_combs))
-    mini_batch = args.batch_size * args.gradient_accumulation_steps
+    
+    # define loss function
+    args.loss_fct = CrossEntropyLoss(ignore_index=0)
+    
+
+    # mini_batch = args.batch_size * args.gradient_accumulation_steps
+    mini_batch = get_mini_batch_size(args)
+
+    # TODO: ...
     if len(args.seen_combs) < mini_batch:
         args.sample_train = True
+    
+    
+    # pre-calculate stuff for args for later use
+    args.prompt_len = args.dcg_att_len + args.dcg_task_len
+    
+    logger.info('start_training')
     
     if not args.sample_train:
         '''
         number of seen_combs >= mini_batch. Training using random traversal of the training data
         '''
-
-        if not args.meta_mctg:
-            print("="*100)
-            print("Apply Common Training")
-            print("="*100)
-        else:
-            print("="*100)
-            print("Apply Meta Training")
-            print("="*100)
-
+        # logs and inits
+        normal_train_log(args)
         current_epoch = 0
+        
+        # pre-calculate. Always the same tensors
+        # tensor with batch_size x 1 containing EOS token
+        eos_token_ids = create_eos_token_tensor(args.batch_size).to(args.device)
+        # mask of 1s with batch_size x 1
+        eos_token_mask = torch.ones((args.batch_size, 1),dtype=torch.long).to(args.device)
+        # mask of 1s with batch_size x prompt_len
+        prompt_mask = torch.ones((args.batch_size, args.prompt_len),dtype=torch.long).to(args.device)
+        
+        # epoch loop
         for epoch in trange(int(args.num_train_epochs), desc='Epoch'):
             current_epoch += 1
 
             current_combs = list()
+            
+            # batch loop
             for step, batch in enumerate(tqdm(train_dataloader, desc='Iteration')):
                 global_step += 1
                 input_ids, attention_mask = batch['input_ids'], batch['attention_mask']
-                label_ids = dict()
 
-                for key in label_keys:
-                    label_ids[key] = torch.tensor(batch[key])
+                # get list of attribute values in the batch for each sample for each attribute  
+                label_ids = {key: torch.tensor(batch[key]) for key in label_keys}
                 
-                combs_step = batch['comb']
-                current_combs.extend(combs_step)
+                # store the combinations of current batch
+                current_combs.extend(batch['comb'])
+                
+                # label ids: for each attribute, list of attribute values in batch
+                # att_tokens_ids: for each sample in batch, list of attribute values
+                att_tokens_list = [label_ids[key] for key in label_keys]
+                att_tokens_ids = torch.cat(att_tokens_list, dim=-1)
+                
+                
+                # prepend eos token to the input ids e.g. tensor([[50256,   101,   102,   103], [50256,   201,   202,   203]])
+                input_ids = prepend_eos_token(torch.stack(input_ids).to(args.device), eos_token_ids)
+                
+                
+                # prompt mask : 1s (batch_size x prompt_len)
+                # attention mask: 1s and 0s given by batch (batch size x seq_len)
+                # attention_mask_2 = torch.cat([prompt_mask_2, torch.stack(attention_mask_original).to(args.device)], dim=-1)
+                attention_mask = torch.cat([eos_token_mask, prompt_mask,torch.stack(attention_mask).to(args.device)], dim=-1)
+                
+                # hack to ensure same device and correct datatype
+                input_ids = input_ids.to(args.device, dtype=torch.long)
+                attention_mask = attention_mask.to(args.device, dtype=torch.long)
+                att_tokens_ids = att_tokens_ids.to(args.device, dtype=torch.long)
 
-                att_tokens_ids = None
-                for key in label_keys:
-                    if att_tokens_ids is None:
-                        att_tokens_ids = label_ids[key]
-                    else:
-                        att_tokens_ids = torch.cat([att_tokens_ids, label_ids[key]], dim=-1)
-                att_tokens_ids = att_tokens_ids.to(args.device)
-                    
-                eos_token_ids = torch.tensor(tokenizer.encode(tokenizer.eos_token))
-                eos_token_ids = eos_token_ids.expand(args.batch_size, eos_token_ids.shape[0]).to(args.device)
-                input_ids = torch.tensor(input_ids).to(args.device)
-                input_ids = torch.cat([eos_token_ids, input_ids], dim=-1)
-
-                prompt_len = args.dcg_att_len + args.dcg_task_len
-                eos_token_mask = torch.tensor([1]).expand(args.batch_size, 1).to(args.device)
-                prompt_mask = torch.tensor([1] * prompt_len).expand(args.batch_size, prompt_len).to(args.device)
-                attention_mask = torch.tensor(attention_mask).to(args.device)
-                attention_mask = torch.cat([prompt_mask, attention_mask], dim=-1)
-                attention_mask = torch.cat([eos_token_mask, attention_mask], dim=-1)
-            
-                #with autocast():
+                # forward pass: logits out is batch x (input_len + prompt_len) x vocab size
                 dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                 logits = dic.logits
-                shift_logits = logits[:, prompt_len:-1, :].contiguous()
+                shift_logits = logits[:, args.prompt_len:-1, :].contiguous() # only keep logits after prompt_len -> (batch x (seq_len - 1) x vocab size)
                 labels = input_ids[:, 1:].contiguous()
-                loss_lm = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float() # (batch * (seq_len - 1)) x vocab size, (batch * (seq_len - 1))
 
+                
+                # sample pseudo combinations: take seen sample combinations (id lists) and sample num_pseu of them
                 pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
                 loss_set = list()
                 loss_set.append(torch.exp(-loss_lm))
                 for pseu_set in pseu_combinations_set:
-                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device)
-                    dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
+                    att_tokens_ids = torch.tensor(pseu_set).unsqueeze(0).expand(args.batch_size, len(pseu_set)).to(args.device) # batch_size x attribute_combination_length
+                    dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids) # run through model with pseudo attribute tokens
                     logits = dic.logits
-                    shift_logits = logits[:, prompt_len:-1, :].contiguous()
+                    shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                    loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
                     loss_set.append(torch.exp(-loss))
                     
-                    loss_dis = loss_lm + torch.log(sum(loss_set))
-                    loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
+                loss_dis = loss_lm + torch.log(sum(loss_set))
+                loss = args.alpha * loss_dis + (1 - args.alpha) * loss_lm
 
-                    if args.clear_cache:
-                        torch.cuda.empty_cache()
+                if args.clear_cache:
+                    torch.cuda.empty_cache()
                 
-                #scaler.scale(loss).backward()
-                #tr_loss += loss.detach().item()
-                #tr_loss_lm += loss_lm.detach().item()
-                #tr_loss_dis += loss_dis.detach().item()
                 loss.backward()
                 tr_loss += loss.item()
                 tr_loss_lm += loss_lm.item()
                 tr_loss_dis += loss_dis.item()
 
                 if (step + 1 ) % args.gradient_accumulation_steps == 0:
-                    #scaler.unscale_(optimizer)
                     torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
 
                     if args.meta_mctg is not True:
-                        #scaler.step(optimizer)
-                        #scaler.update()
-                        #optimizer.zero_grad()
-                        #scheduler.step()
                         # common dcg training
                         optimizer.step()
                         scheduler.step()
@@ -428,7 +589,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -438,7 +599,7 @@ def train(args):
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
                                     support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
-                                    s_loss = loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
                                 loss_support_dis = loss_support_lm + torch.log(sum(s_loss_set))
@@ -518,9 +679,9 @@ def train(args):
         number of seen combs < mini_batch. 
         Training by first sampling combinations (num of sampling combinations < num of seen combs) and then sampling data based on those combinations, ensuring that each epoch of training data approximates the result of traversing all the data. This approach helps to ensure the successful construction of pseudo-comp batch when number of seen combs < mini_batch.
         '''
-        print("="*100)
-        print("Applying Sample Meta Training")
-        print("="*100)
+        
+        sample_train_log()
+        
         assert len(args.seen_combs) >= 2
         assert args.num_sample_combs is not None
         assert mini_batch % args.num_sample_combs == 0
@@ -528,10 +689,14 @@ def train(args):
         new_gradient_accumulation_steps = int(mini_batch / num_sample_combs)
         new_batch_size = num_sample_combs
         
+        # eos token ids
+        eos_token_ids = create_eos_token_tensor(new_batch_size, args)
+        
         current_epoch = 0
         for epoch in trange(int(args.num_train_epochs), desc='Epoch'): 
             current_epoch += 1
-            backup_label_to_tokenized_data = copy.deepcopy(label_to_tokenized_data)
+            # backup_label_to_tokenized_data = copy.deepcopy(label_to_tokenized_data)
+            backup_label_to_tokenized_data = copy.deepcopy(args.label_to_tokenized_data)
             num_combs_of_sample_combs = math.comb(len(args.seen_combs), num_sample_combs)
             samples_per_comb_of_sample_combs = int(len(tokenized_data) / num_combs_of_sample_combs / num_sample_combs)
             combs_of_comb_list = list()
@@ -576,8 +741,8 @@ def train(args):
                             att_tokens_ids = torch.cat([att_tokens_ids, label_ids[key]], dim=1)
                     att_tokens_ids = att_tokens_ids.to(args.device)
 
-                    eos_token_ids = torch.tensor(tokenizer.encode(tokenizer.eos_token))
-                    eos_token_ids = eos_token_ids.expand(new_batch_size, eos_token_ids.shape[0]).to(args.device)
+                    #eos_token_ids = torch.tensor(tokenizer.encode(tokenizer.eos_token))
+                    #eos_token_ids = eos_token_ids.expand(new_batch_size, eos_token_ids.shape[0]).to(args.device)
                     input_ids = torch.tensor(input_ids).to(args.device)
                     input_ids = torch.cat([eos_token_ids, input_ids], dim=-1)
 
@@ -870,6 +1035,7 @@ def main():
     """
     # read the training dataset in and filter out unseen combinations based on ID which defines a fixed set of unseen combinations
     train_dataset, mode_name , all_combs, unseen_combs = get_train_dataset(dataset_path=args.dataset_path, unseen_combs_path=args.unseen_combs_path, mode=args.mode, idx=args.idx)
+    
     if args.debug:
         print("Debugging mode")
         train_dataset = train_dataset[:args.debug_samples]
