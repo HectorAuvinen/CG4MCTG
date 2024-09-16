@@ -16,50 +16,6 @@
 # We use "dcg" as an example to show how to use the CompMCTG benchmark to evaluate this method.
 
 # ================================================================================
-# dataset Fyelp
-# Original
-# python dcg_meta.py --dataset Fyelp \
-#                    --mode Original \
-#                    --idx 0 \
-# # Hold-Out
-# for idx in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39
-# do
-#     python dcg_meta.py --dataset Fyelp \
-#                     --mode Hold-Out \
-#                     --idx ${idx} \
-# done
-# # ACD
-# for idx in 0 1 2 3 4 5 6 7 8 9
-# do
-#     python dcg_meta.py --dataset Fyelp \
-#                     --mode ACD \
-#                     --idx ${idx} \
-# done
-
-
-# ================================================================================
-# dataset Amazon
-# Original
-# python dcg_meta.py --dataset Amazon \
-#                    --mode Original \
-#                    --idx 0 \
-# # Hold-Out
-# for idx in 0 1 2 3 4 5 6 7 8 9 10 11
-# do
-#     python dcg_meta.py --dataset Amazon \
-#                     --mode Hold-Out \
-#                     --idx ${idx} \
-# done
-# # ACD (equals Few-Shot in Amazon)
-# for idx in 0 1 2 3 4 5 6 7 8 9
-# do
-#     python dcg_meta.py --dataset Amazon \
-#                     --mode Few-Shot \
-#                     --idx ${idx} \
-# done
-
-
-# ================================================================================
 # dataset Yelp
 # Original
 # python dcg_meta.py --model_name_or_path 'gpt2-medium' --output_dir '../ckpt' --output_data_dir '../test_data' --num_train_epochs 8 --dataset 'Yelp' --unseen_combs_path '../data/Yelp/unseen.jsonl' --dataset_path '../data/Yelp/gen.jsonl' --device_num 1 --mode 'Original' --idx 0 --batch_size 2
@@ -142,25 +98,3 @@ do
                    --half_precision
                    # --multi_gpu \
 done
-
-
-# ================================================================================
-# dataset Mixture
-# Original
-# python dcg_meta.py --dataset Mixture \
-#                    --mode Original \
-#                    --idx 0 \
-# # Hold-Out
-# for idx in 0 1 2 3 4 5 6 7
-# do
-#     python dcg_meta.py --dataset Mixture \
-#                     --mode Hold-Out \
-#                     --idx ${idx} \
-# done
-# # ACD (equals Few-Shot in Mixture)
-# for idx in 0 1 2 3 4 5 6 7
-# do
-#     python dcg_meta.py --dataset Mixture \
-#                     --mode Few-Shot \
-#                     --idx ${idx} \
-# done

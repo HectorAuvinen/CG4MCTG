@@ -28,6 +28,20 @@ from torch.cuda.amp import autocast, GradScaler
 
 # MOVE TO CONSTANTS
 EOS_TOKEN_ID = 50256
+
+UNSEEN_PATH_MAP = {
+    "Yelp": "./data/Yelp/unseen.jsonl",
+    "Mixture": "./data/Mixture/unseen.jsonl",
+    "Amazon": "./data/Amazon/unseen.jsonl",
+    "Fyelp": "./data/Fyelp/unseen.jsonl",
+}
+
+DATASET_PATH_MAP = {
+    "Yelp": "./data/Yelp/gen.jsonl",
+    "Mixture": "./data/Mixture/gen.jsonl",
+    "Amazon": "./data/Amazon/gen.jsonl",
+    "Fyelp": "./data/Fyelp/gen.jsonl",
+}
 # MOVE TO CONSTANTS
 
 
@@ -271,45 +285,45 @@ def get_att_tokens_ids(combinations:list, tokenizer: GPT2Tokenizer) -> list:
     '''
     encode attribute tokens
     '''
-    res_att_tokens_ids = list()
+    res_att_tokens_ids = list() # TODO: just a lookup table for attribute values?
     for item in combinations:
         att_tokens_ids = list()
         for key in list(item.keys()): # e.g. ['sentiment', 'pronoun', 'tense']
-            assert len(tokenizer.encode(' ' + item[key])) == 1
+            assert len(tokenizer.encode(' ' + item[key])) == 1 # remove duplicate encoding
             att_tokens_ids.append(tokenizer.encode(' ' + item[key])[0]) # encode attribute value e.g. positive
         res_att_tokens_ids.append(att_tokens_ids)
     return res_att_tokens_ids
 
 def get_support_combs(current_combs:list, seen_combs:list, label_keys:list) -> list:
     current_single_att = dict()
-    for key in label_keys:
-        current_single_att[key] = list()
-    for comb in current_combs:
+    for key in label_keys: # create a list for each attribute key
+        current_single_att[key] = list() # current_single_att = {key: [] for key in label_keys}
+    for comb in current_combs: # go over all combinations and store values from them for each attribute key
         for key in label_keys:
-            current_single_att[key].append(comb[key])
-    for key in label_keys:
+            current_single_att[key].append(comb[key]) # current_single_att = {key: [comb[key] for comb in current_combs] for key in label_keys}
+    for key in label_keys: # remove duplicates. more efficient? current_single_att[key] = list(dict.fromkeys(current_single_att[key]))
         current_single_att[key] = [current_single_att[key][i] for i in range(len(current_single_att[key])) if current_single_att[key][i] not in current_single_att[key][:i]]
     
     keys = current_single_att.keys()
     values = current_single_att.values()
-    combinations = list(itertools.product(*values))
-    available_combs = [dict(zip(keys, combination)) for combination in combinations]
+    combinations = list(itertools.product(*values)) # create all possible combinations of attribute values
+    available_combs = [dict(zip(keys, combination)) for combination in combinations] # store attribute key value combinations
 
-    support_combs = [item for item in available_combs if item not in current_combs]
+    support_combs = [item for item in available_combs if item not in current_combs] 
     support_combs = [item for item in support_combs if item in seen_combs]
 
     return support_combs
 
 def get_support_batch(support_combs:list, args) -> list:
     support_data = list()
-    support_num = args.batch_size * args.gradient_accumulation_steps
+    support_num = args.batch_size * args.gradient_accumulation_steps #  get_mini_batch_size(args)
     all_support_att_tokens_ids = get_att_tokens_ids(combinations=support_combs, tokenizer=args.tokenizer)
-    if args.num_pseu >= len(all_support_att_tokens_ids):
+    if args.num_pseu >= len(all_support_att_tokens_ids): # determine number of pseudo combinations
         args.support_num_pseu = len(all_support_att_tokens_ids)
     else:
         args.support_num_pseu = args.num_pseu
     
-    if support_num <= len(support_combs):
+    if support_num <= len(support_combs): # TODO: check this
         sample_combs = random.sample(support_combs, support_num)
         for comb in sample_combs:
             data_list = args.label_to_tokenized_data[json.dumps(comb)]
@@ -318,11 +332,11 @@ def get_support_batch(support_combs:list, args) -> list:
     else:
         support_num_per_comb = int(support_num / len(support_combs))
         for comb in support_combs:
-            data_list = args.label_to_tokenized_data[json.dumps(comb)]
-            sample_data = random.sample(data_list, support_num_per_comb)
+            data_list = args.label_to_tokenized_data[json.dumps(comb)] # get samples that match this combination
+            sample_data = random.sample(data_list, support_num_per_comb) # sample support_num_per_comb samples
             support_data.extend(sample_data)
         residual_support_num = support_num - support_num_per_comb * len(support_combs)
-        if residual_support_num != 0:
+        if residual_support_num != 0: # TODO: check this
             data_lists = [args.label_to_tokenized_data[json.dumps(comb)] for comb in support_combs]
             combined_data_list = [item for sublist in data_lists for item in sublist]
             for sampled_data in support_data:
@@ -500,7 +514,7 @@ def train(args):
                 dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                 logits = dic.logits
                 shift_logits = logits[:, args.prompt_len:-1, :].contiguous() # only keep logits after prompt_len -> (batch x (seq_len - 1) x vocab size)
-                labels = input_ids[:, 1:].contiguous()
+                labels = input_ids[:, 1:].contiguous() # labels are offset tokens
                 loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float() # (batch * (seq_len - 1)) x vocab size, (batch * (seq_len - 1))
 
                 
@@ -539,7 +553,7 @@ def train(args):
                         if args.clear_cache:
                             torch.cuda.empty_cache()
                     else:
-                        # use meta_mctg training
+                        # use meta_mctg training: remove duplicate combinations
                         current_combs = [current_combs[i] for i in range(len(current_combs)) if current_combs[i] not in current_combs[:i]]
                         # get pseudo-comp attribute combinations set
                         support_combs = get_support_combs(current_combs=current_combs, seen_combs=args.seen_combs, label_keys=label_keys)
@@ -549,7 +563,7 @@ def train(args):
                             # get pseudo-comp batch
                             support_data = get_support_batch(support_combs=support_combs, args=args)
 
-                            all_support_att_tokens_ids = get_att_tokens_ids(combs=support_combs, tokenizer=tokenizer)
+                            all_support_att_tokens_ids = get_att_tokens_ids(combinations=support_combs, tokenizer=tokenizer) # get attribute token ids for the support combinations
 
                             support_sampler = torch.utils.data.RandomSampler(support_data)
                             support_dataloader = DataLoader(tokendataset(support_data), batch_size=args.batch_size, drop_last=False, collate_fn=padding_fuse_fn, sampler=support_sampler)
@@ -564,30 +578,36 @@ def train(args):
                             with torch.no_grad():
                                 for param, backup_param in zip(model.parameters(), backup_model.parameters()):
                                     if param.grad is not None:
-                                        backup_param -= optimizer.param_groups[0]['lr'] * param.grad
+                                        backup_param -= optimizer.param_groups[0]['lr'] * param.grad # update backup model parameters
                             for support_batch in support_dataloader:
                                 support_input_ids, support_attention_mask = support_batch['input_ids'], support_batch['attention_mask']
                                 support_label_ids = dict()
                                 for key in label_keys:
-                                    support_label_ids[key] = torch.tensor(support_batch[key])
+                                    support_label_ids[key] = torch.tensor(support_batch[key]) # support_label_ids = {key: torch.tensor(support_batch[key]) for key in label_keys}
                                 
                                 support_att_tokens_ids = None
                                 for key in label_keys:
                                     if support_att_tokens_ids is None:
                                         support_att_tokens_ids = support_label_ids[key]
                                     else:
-                                        support_att_tokens_ids = torch.cat([support_att_tokens_ids, support_label_ids[key]], dim=-1)
+                                        support_att_tokens_ids = torch.cat([support_att_tokens_ids, support_label_ids[key]], dim=-1)  
+                                # att_tokens_list = [support_label_ids[key] for key in label_keys] 
+                                # att_tokens_ids = torch.cat(att_tokens_list, dim=-1)
                                 support_att_tokens_ids = support_att_tokens_ids.to(args.device)
 
-                                support_input_ids = torch.tensor(support_input_ids).to(args.device)
+                                # support_input_ids = torch.tensor(support_input_ids).to(args.device)
+                                support_input_ids = torch.stack(support_input_ids).to(args.device)
+                                
                                 support_input_ids = torch.cat([eos_token_ids, support_input_ids], dim=-1)
-                                support_attention_mask = torch.tensor(support_attention_mask).to(args.device)
+                                #support_attention_mask = torch.tensor(support_attention_mask).to(args.device)
+                                support_attention_mask = torch.stack(support_attention_mask).to(args.device)
+                                
                                 support_attention_mask = torch.cat([prompt_mask, support_attention_mask], dim=-1)
                                 support_attention_mask = torch.cat([eos_token_mask, support_attention_mask], dim=-1)
 
                                 support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                 support_logits = support_dic.logits
-                                support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
+                                support_shift_logits = support_logits[:, args.prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
                                 loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
 
@@ -598,7 +618,7 @@ def train(args):
                                     support_att_tokens_ids = torch.tensor(support_pseu_set).unsqueeze(0).expand(args.batch_size, len(support_pseu_set)).to(args.device)
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
-                                    support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
+                                    support_shift_logits = support_logits[:, args.prompt_len:-1, :].contiguous()
                                     s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
@@ -682,6 +702,7 @@ def train(args):
         
         sample_train_log()
         
+        # sanity checks
         assert len(args.seen_combs) >= 2
         assert args.num_sample_combs is not None
         assert mini_batch % args.num_sample_combs == 0
@@ -973,8 +994,8 @@ def test(args):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name_or_path", default=None, type=str)
-    parser.add_argument("--output_dir", default=None, type=str)
-    parser.add_argument("--output_data_dir", default=None)
+    parser.add_argument("--output_dir", default="../ckpt", type=str)
+    parser.add_argument("--output_data_dir", default="../test_data", type=str)
     parser.add_argument("--batch_size", default=2, type=int)
     parser.add_argument("--gradient_accumulation_steps", default=4, type=int)
     parser.add_argument("--weight_decay", default=0.01, type=float)
@@ -1011,10 +1032,21 @@ def main():
     parser.add_argument("--torch_compile", default=False, action='store_true')
     parser.add_argument("--clear_cache", default=False, action='store_true')
     parser.add_argument("--half_precision", default=False, action='store_true')
+    parser.add_argument("--map_paths", default=False, action='store_true')
+    parser.add_argument("--debug_steps_with_test", default=None, type=int)
 
     args = parser.parse_args()
     assert args.dataset is not None
 
+    if args.map_paths:
+        args.dataset_path = DATASET_PATH_MAP[args.dataset]
+        args.unseen_combs_path = UNSEEN_PATH_MAP[args.dataset]
+        
+    print("*"*100)
+    print("Dataset path: ", args.dataset_path)
+    print("Unseen combs path: ", args.unseen_combs_path)
+    print("*"*100)
+    
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
     if not os.path.exists(args.output_data_dir):
@@ -1043,7 +1075,9 @@ def main():
     if args.debug:
         print("Debugging mode")
         train_dataset = train_dataset[:args.debug_samples]
-    
+        
+    if args.debug_steps_with_test:
+        train_dataset = train_dataset[:args.debug_steps_with_test]
         
     seen_combs = [i for i in all_combs if i not in unseen_combs]
     args.all_combs = all_combs
