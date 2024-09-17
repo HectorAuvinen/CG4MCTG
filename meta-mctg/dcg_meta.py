@@ -79,7 +79,7 @@ def check_tensor_deep_equality(tensor1, tensor2,args):
         if elem1.item() != elem2.item() or type(elem1.item()) != type(elem2.item()):
             result['same_elements'] = False
             result[f'difference_at_idx_{idx}'] = (elem1.item(), elem2.item())
-            break  # Exit early if we find a difference
+            break 
 
     return result
 
@@ -441,7 +441,9 @@ def train(args):
     model.zero_grad()
     
     # define loss function
-    args.loss_fct = CrossEntropyLoss(ignore_index=0)
+    # ignore index should be EOS token? args.loss_fct = CrossEntropyLoss(ignore_index=50256)
+    # args.loss_fct = CrossEntropyLoss(ignore_index=0)
+    args.loss_fct = CrossEntropyLoss(ignore_index=args.ignore_index)
     
 
     # mini_batch = args.batch_size * args.gradient_accumulation_steps
@@ -1034,6 +1036,7 @@ def main():
     parser.add_argument("--half_precision", default=False, action='store_true')
     parser.add_argument("--map_paths", default=False, action='store_true')
     parser.add_argument("--debug_steps_with_test", default=None, type=int)
+    parser.add_argument("--ignore_index", default=0,type=int)
 
     args = parser.parse_args()
     assert args.dataset is not None
