@@ -30,17 +30,17 @@ from torch.cuda.amp import autocast, GradScaler
 EOS_TOKEN_ID = 50256
 
 UNSEEN_PATH_MAP = {
-    "Yelp": "./data/Yelp/unseen.jsonl",
-    "Mixture": "./data/Mixture/unseen.jsonl",
-    "Amazon": "./data/Amazon/unseen.jsonl",
-    "Fyelp": "./data/Fyelp/unseen.jsonl",
+    "Yelp": "../data/Yelp/unseen.jsonl",
+    "Mixture": "../data/Mixture/unseen.jsonl",
+    "Amazon": "../data/Amazon/unseen.jsonl",
+    "Fyelp": "../data/Fyelp/unseen.jsonl",
 }
 
 DATASET_PATH_MAP = {
-    "Yelp": "./data/Yelp/gen.jsonl",
-    "Mixture": "./data/Mixture/gen.jsonl",
-    "Amazon": "./data/Amazon/gen.jsonl",
-    "Fyelp": "./data/Fyelp/gen.jsonl",
+    "Yelp": "../data/Yelp/gen.jsonl",
+    "Mixture": "../data/Mixture/gen.jsonl",
+    "Amazon": "../data/Amazon/gen.jsonl",
+    "Fyelp": "../data/Fyelp/gen.jsonl",
 }
 # MOVE TO CONSTANTS
 
@@ -995,7 +995,7 @@ def test(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name_or_path", default=None, type=str)
+    parser.add_argument("--model_name_or_path", default="gpt2-medium", type=str)
     parser.add_argument("--output_dir", default="../ckpt", type=str)
     parser.add_argument("--output_data_dir", default="../test_data", type=str)
     parser.add_argument("--batch_size", default=2, type=int)
@@ -1046,6 +1046,9 @@ def main():
         args.unseen_combs_path = UNSEEN_PATH_MAP[args.dataset]
         
     print("*"*100)
+    print("Model: ", args.model_name_or_path)
+    print("Output dir: ", args.output_dir)
+    print("Output data dir: ", args.output_data_dir)
     print("Dataset path: ", args.dataset_path)
     print("Unseen combs path: ", args.unseen_combs_path)
     print("*"*100)
