@@ -393,7 +393,12 @@ def train(args):
     # half precision. TODO: try automatic mixed precision
     if args.half_precision:
         model.half()
-    
+    # gradient checkpointing
+    if args.gradient_checkpointing:
+        model.gradient_checkpointing_enable()
+        print("*"*100)
+        print("Enabled gradient checkpointing")
+        print("*"*100)
     
     # freeze parameters
     args.peft_modules = ["dcg"]
@@ -517,7 +522,7 @@ def train(args):
                 logits = dic.logits
                 shift_logits = logits[:, args.prompt_len:-1, :].contiguous() # only keep logits after prompt_len -> (batch x (seq_len - 1) x vocab size)
                 labels = input_ids[:, 1:].contiguous() # labels are offset tokens
-                loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float() # (batch * (seq_len - 1)) x vocab size, (batch * (seq_len - 1))
+                loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)) # .float() # (batch * (seq_len - 1)) x vocab size, (batch * (seq_len - 1))
 
                 
                 # sample pseudo combinations: take seen sample combinations (id lists) and sample num_pseu of them
@@ -530,7 +535,7 @@ def train(args):
                     logits = dic.logits
                     shift_logits = logits[:, args.prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                    loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))# .float()
                     loss_set.append(torch.exp(-loss))
                     
                 loss_dis = loss_lm + torch.log(sum(loss_set))
@@ -611,7 +616,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, args.prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))# .float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -621,7 +626,7 @@ def train(args):
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
                                     support_shift_logits = support_logits[:, args.prompt_len:-1, :].contiguous()
-                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))# .float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
                                 loss_support_dis = loss_support_lm + torch.log(sum(s_loss_set))
@@ -782,7 +787,7 @@ def train(args):
                     logits = dic.logits
                     shift_logits = logits[:, prompt_len:-1, :].contiguous()
                     labels = input_ids[:, 1:].contiguous()
-                    loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                    loss_lm = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))# .float()
                     
                     pseu_combinations_set = random.sample(seen_att_tokens_ids, args.num_pseu)
                     loss_set = list()
@@ -792,7 +797,7 @@ def train(args):
                         dic = model(input_ids=input_ids, attention_mask=attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=att_tokens_ids)
                         logits = dic.logits
                         shift_logits = logits[:, prompt_len:-1, :].contiguous()
-                        loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1)).float()
+                        loss = args.loss_fct(shift_logits.view(-1, shift_logits.size(-1)), labels.view(-1))# .float()
                         loss_set.append(torch.exp(-loss))
                     
                     loss_dis = loss_lm + torch.log(sum(loss_set))
@@ -854,7 +859,7 @@ def train(args):
                                 support_logits = support_dic.logits
                                 support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
                                 support_labels = support_input_ids[:, 1:].contiguous()
-                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                loss_support_lm = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))# .float()
 
                                 support_pseu_combinations_set = random.sample(all_support_att_tokens_ids, args.support_num_pseu)
                                 s_loss_set = list()
@@ -864,7 +869,7 @@ def train(args):
                                     support_dic = backup_model(input_ids=support_input_ids, attention_mask=support_attention_mask, return_dict=True, use_cache=True, config=config, att_tokens_ids=support_att_tokens_ids)
                                     support_logits = support_dic.logits
                                     support_shift_logits = support_logits[:, prompt_len:-1, :].contiguous()
-                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1)).float()
+                                    s_loss = args.loss_fct(support_shift_logits.view(-1, support_shift_logits.size(-1)), support_labels.view(-1))# .float()
                                     s_loss_set.append(torch.exp(-s_loss))
                                 
                                 loss_support_dis = loss_support_lm + torch.log(sum(s_loss_set))
@@ -1037,6 +1042,7 @@ def main():
     parser.add_argument("--map_paths", default=False, action='store_true')
     parser.add_argument("--debug_steps_with_test", default=None, type=int)
     parser.add_argument("--ignore_index", default=0,type=int)
+    parser.add_argument("--gradient_checkpointing", default=False, action='store_true')
 
     args = parser.parse_args()
     assert args.dataset is not None
