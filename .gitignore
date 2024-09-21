@@ -1,0 +1,11 @@
+__pycache__/
+**/__pycache__/
+
+/ckpt/
+
+/data/
+
+.vscode/launch.json
+.vscode/
+
+evaluation/test_cases/

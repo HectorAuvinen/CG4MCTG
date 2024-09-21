@@ -34,8 +34,8 @@ if __name__ == "__main__":
     # args.device = DEVICE
     args.device = torch.device("cuda:{}".format(args.device_num))
 
-    model = GPT2LMHeadModel.from_pretrained("/home/zhongtq/pretrained_lms/GPT2-l/")
-    tokenizer = GPT2Tokenizer.from_pretrained("/home/zhongtq/pretrained_lms/GPT2-l/")
+    model = GPT2LMHeadModel.from_pretrained("gpt2-large")
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2-large")
     model.to(args.device)
     model.eval()
     args.tokenizer = tokenizer
