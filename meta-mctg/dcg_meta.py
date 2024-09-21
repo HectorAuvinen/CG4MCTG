@@ -360,7 +360,8 @@ def train(args):
     config = GPT2Config.from_pretrained(args.model_name_or_path)
     tokenizer = GPT2Tokenizer.from_pretrained(args.model_name_or_path)
     args.tokenizer = tokenizer
-    
+    print(config)
+    print(args.gradient_checkpointing)
     # tokenize dataset, construct dataset and dataloader
     tokenized_data = tokenize(dataset_list=args.train_dataset, tokenizer=args.tokenizer)
     train_dataset = tokendataset(tokenized_data)
@@ -393,12 +394,6 @@ def train(args):
     # half precision. TODO: try automatic mixed precision
     if args.half_precision:
         model.half()
-    # gradient checkpointing
-    if args.gradient_checkpointing:
-        model.gradient_checkpointing_enable()
-        print("*"*100)
-        print("Enabled gradient checkpointing")
-        print("*"*100)
     
     # freeze parameters
     args.peft_modules = ["dcg"]
