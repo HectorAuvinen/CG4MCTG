@@ -44,7 +44,7 @@ def padding_fuse_fn(data_list):
     for i, item in enumerate(data_list):
         text_pad_len = max_text_len - text_length[i]
         attention_mask = [1] * text_length[i] + [0] * text_pad_len
-        text = item["text"] + [1] * text_pad_len
+        text = item["text"] + [0] * text_pad_len
 
         input_ids.append(text)
         attention_masks.append(attention_mask)
