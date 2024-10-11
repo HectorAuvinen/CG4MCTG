@@ -8,6 +8,7 @@ import json
 import pdb
 from eval_acc_Yelp import sanitize_filename
 import wandb
+from eval_perplexity import full_ppl_eval
 
 MAXLEN = 512
 BATCH_SIZE = 4
@@ -111,7 +112,7 @@ def main():
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
         project="peft_mctg",
-        name=f"eval_acc_{args.dataset}_{sanitized_filename}",
+        name=f"eval_acc_{args.dataset_path}_{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy",args.datased], # sanitized_filename
         config=vars(args)
@@ -224,7 +225,14 @@ def main():
         #     logs['acc{}'.format(i)] = float('{:.4f}'.format(acc_lst[i]))
         # logs['total_loss'] = tr_loss
         # print(logs)
-        
+    
+    perplexity = full_ppl_eval(args)
+    with open("results.txt", "w") as results_file:
+        for key in acc_dic.keys():
+            results_file.write(f"{key}: {acc_dic[key]}\n")
+        results_file.write(f"perplexity: {perplexity}\n")
+    wandb.save("results.txt")
+    
     wandb.finish()
     
 if __name__ == "__main__":

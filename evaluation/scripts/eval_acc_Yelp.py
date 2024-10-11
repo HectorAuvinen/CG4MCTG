@@ -118,7 +118,7 @@ def main():
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
         project="peft_mctg",
-        name=f"eval_acc_{args.dataset}_{sanitized_filename}",
+        name=f"eval_acc_{args.dataset_path}_{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy",args.datased], # sanitized_filename
         config=vars(args)
@@ -240,9 +240,9 @@ def main():
         # print(logs)
     perplexity = full_ppl_eval(args)
     with open("results.txt", "w") as results_file:
-        for key in acc_dic_keys():
+        for key in acc_dic.keys():
             results_file.write(f"{key}: {acc_dic[key]}\n")
-        result_file.write(f"perplexity: {perplexity}\n")
+        results_file.write(f"perplexity: {perplexity}\n")
     wandb.save("results.txt")
     
     wandb.finish()
