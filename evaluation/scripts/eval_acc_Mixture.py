@@ -6,6 +6,8 @@ import argparse
 import torch
 import json
 import pdb
+from eval_acc_Yelp import sanitize_filename
+import wandb
 
 MAXLEN = 512
 BATCH_SIZE = 4
@@ -105,6 +107,16 @@ def main():
     # args.device = DEVICE
     args.device = torch.device("cuda:{}".format(args.device_num))
 
+    filename = args.dataset_path.split("/")[-1]
+    sanitized_filename = sanitize_filename(filename)
+    wandb.init(
+        project="peft_mctg",
+        name=f"eval_acc_{args.dataset}_{sanitized_filename}",
+        notes="Acc evaluation",
+        tags=["eval","accuracy",args.datased], # sanitized_filename
+        config=vars(args)
+    )
+    
     aspect_list = ['sentiment', 'topic_cged']
     acc_dic = dict()
     for aspect in aspect_list:
@@ -198,6 +210,10 @@ def main():
     acc_avg = acc_avg / len(aspect_list)
     acc_dic['acc_avg'] = float('{:.4f}'.format(acc_avg))
 
+    
+    # wandb
+    wandb.log(acc_dic)
+    
     for key in list(acc_dic.keys()):
         print({key: acc_dic[key]})
 
@@ -208,6 +224,8 @@ def main():
         #     logs['acc{}'.format(i)] = float('{:.4f}'.format(acc_lst[i]))
         # logs['total_loss'] = tr_loss
         # print(logs)
-
+        
+    wandb.finish()
+    
 if __name__ == "__main__":
     main()

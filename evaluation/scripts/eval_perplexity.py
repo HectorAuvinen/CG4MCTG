@@ -26,6 +26,44 @@ def cal_ppl(text=None, args=None):
         ppl *= (1 / prob) ** (1 / shift_logits.shape[0])
     return ppl
 
+def full_ppl_eval(args):
+    model = GPT2LMHeadModel.from_pretrained("gpt2-large")
+    tokenizer = GPT2Tokenizer.from_pretrained("gpt2-large")
+    model.to(args.device)
+    model.eval()
+    args.tokenizer = tokenizer
+    args.model = model
+
+    ppl_list = []
+    f = open(args.dataset_path, 'r')
+    for line in f.readlines():
+        dic = json.loads(line)
+        text = dic['text']
+        if isinstance(text, dict):
+            for i in range(len(text)):
+                text_i = text[str(i)]
+                if len(text_i.split(' ')) < 10:
+                    continue
+                ppl = cal_ppl(text=text_i, args=args)
+                if ppl == -1:
+                    continue
+                ppl_list.append(ppl)
+        elif isinstance(text, str):
+            if len(text.split(' ')) < 10:
+                continue
+            ppl = cal_ppl(text=text, args=args)
+            if ppl == -1:
+                continue
+            ppl_list.append(ppl)
+        else:
+            raise TypeError("Wrong text type")
+    f.close()
+
+    avg_ppl = sum(ppl_list) / len(ppl_list)
+    logs = {"avg_ppl": float('{:.2f}'.format(avg_ppl))}
+    print(logs)
+    return logs
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset_path", default=None, type=str)
