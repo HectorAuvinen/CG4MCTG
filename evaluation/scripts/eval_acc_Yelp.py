@@ -242,7 +242,7 @@ def main():
     with open("results.txt", "w") as results_file:
         for key in acc_dic.keys():
             results_file.write(f"{key}: {acc_dic[key]}\n")
-        results_file.write(f"avg_ppl: {perplexity["avg_ppl"]}\n")
+        results_file.write(f"avg_ppl: {perplexity['avg_ppl']}\n")
     wandb.save("results.txt")
     wandb.log(perplexity)
     wandb.finish()
