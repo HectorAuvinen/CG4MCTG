@@ -232,7 +232,7 @@ def main():
             results_file.write(f"{key}: {acc_dic[key]}\n")
         results_file.write(f"avg_ppl: {perplexity["avg_ppl"]}\n")
     wandb.save("results.txt")
-    
+    wandb.log(perplexity)
     wandb.finish()
     
 if __name__ == "__main__":
