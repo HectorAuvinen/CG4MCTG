@@ -117,10 +117,10 @@ def main():
     filename = args.dataset_path.split("/")[-1]
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
-        project="peft_mctg",
+        project="peft_mctg_eval",
         name=f"eval_acc_{args.dataset_path}_{sanitized_filename}",
         notes="Acc evaluation",
-        tags=["eval","accuracy",args.dataset_path], # sanitized_filename
+        tags=["eval","accuracy","Yelp"], # sanitized_filename
         config=vars(args)
     )
     aspect_list = ['sentiment', 'pronoun', 'tense']
