@@ -112,7 +112,7 @@ def main():
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
         project="peft_mctg_eval",
-        name=f"eval_acc_{args.dataset_path}_{sanitized_filename}",
+        name=f"{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy","Mixture"], # sanitized_filename
         config=vars(args)

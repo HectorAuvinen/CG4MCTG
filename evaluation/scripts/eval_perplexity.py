@@ -9,12 +9,12 @@ TEXT_LENGTH = 50
 # DEVICE = torch.device("cuda")
 
 def cal_ppl(text=None, args=None):
-    input_text = torch.tensor([tokenizer(tokenizer.eos_token + text).input_ids]).to(args.device)
+    input_text = torch.tensor([args.tokenizer(args.tokenizer.eos_token + text).input_ids]).to(args.device)
     output = args.model(input_ids=input_text, return_dict=True, use_cache=True)
     logits = output.logits
     shift_logits = logits[:, :-1, :].squeeze()
     shift_logits = torch.softmax(shift_logits, dim=-1)
-    index = torch.tensor(tokenizer(text).input_ids).to(args.device)
+    index = torch.tensor(args.tokenizer(text).input_ids).to(args.device)
     probs = []
     for i in range(shift_logits.shape[0]):
         prob = torch.index_select(shift_logits[i], -1, index[i]).item()
