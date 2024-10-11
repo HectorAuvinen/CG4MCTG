@@ -114,7 +114,7 @@ def main():
         project="peft_mctg",
         name=f"eval_acc_{args.dataset_path}_{sanitized_filename}",
         notes="Acc evaluation",
-        tags=["eval","accuracy",args.datased], # sanitized_filename
+        tags=["eval","accuracy",args.dataset_path], # sanitized_filename
         config=vars(args)
     )
     
