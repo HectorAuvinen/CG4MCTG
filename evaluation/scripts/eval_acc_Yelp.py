@@ -119,7 +119,7 @@ def main():
         name=f"{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy","Yelp"], # sanitized_filename
-        config=vars(parsed_config)
+        config=parsed_config
     )
     aspect_list = ['sentiment', 'pronoun', 'tense']
     acc_dic = dict()

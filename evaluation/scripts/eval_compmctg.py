@@ -24,10 +24,10 @@ def eval():
         subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)
     elif args.dataset in args.eval_Yelp_path:
         subprocess.run(['python', args.eval_Yelp_path] + args_to_pass)
-        subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)
+        #subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)
     elif args.dataset in args.eval_Mixture_path:
         subprocess.run(['python', args.eval_Mixture_path] + args_to_pass)
-        subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)
+        #subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)
     else:
         raise Exception("Wrong dataset")
 

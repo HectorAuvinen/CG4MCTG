@@ -1,5 +1,54 @@
 import re
 
+def count_ngram(hyps_resp, n):
+    """
+    Count the number of unique n-grams
+    :param hyps_resp: list, a list of responses
+    :param n: int, n-gram
+    :return: the number of unique n-grams in hyps_resp
+    """
+    if len(hyps_resp) == 0:
+        print("ERROR, eval_distinct get empty input")
+        return
+
+    if type(hyps_resp[0]) != list:
+        print("ERROR, eval_distinct takes in a list of <class 'list'>, get a list of {} instead".format(
+            type(hyps_resp[0])))
+        return
+
+    ngram = set()
+    for resp in hyps_resp:
+        if len(resp) < n:
+            continue
+        for i in range(len(resp) - n + 1):
+            ngram.add(' '.join(resp[i: i + n]))
+    return len(ngram)
+
+def eval_distinct(hyps_resp, tokenizer):
+    """
+    compute distinct score for the hyps_resp
+    :param hyps_resp: list, a list of hyps responses
+    :return: average distinct score for 1, 2-gram
+    """
+
+    hyps_resp = [list(map(str, tokenizer.encode(h))) for h in hyps_resp]
+
+    if len(hyps_resp) == 0:
+        print("ERROR, eval_distinct get empty input")
+        return
+
+    if type(hyps_resp[0]) != list:
+        print("ERROR, eval_distinct takes in a list of <class 'list'>, get a list of {} instead".format(
+            type(hyps_resp[0])))
+        return
+
+    hyps_resp = [(' '.join(i)).split() for i in hyps_resp]
+    num_tokens = sum([len(i) for i in hyps_resp])
+    dist1 = count_ngram(hyps_resp, 1) / float(num_tokens)
+    dist2 = count_ngram(hyps_resp, 2) / float(num_tokens)
+    dist3 = count_ngram(hyps_resp, 3) / float(num_tokens)
+
+    return dist1, dist2, dist3
 
 # filename parsing
 def parse_config_from_filename(filename):
