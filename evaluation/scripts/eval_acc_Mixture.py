@@ -6,9 +6,10 @@ import argparse
 import torch
 import json
 import pdb
-from eval_acc_Yelp import sanitize_filename
+
 import wandb
 from eval_perplexity import full_ppl_eval
+from eval_utils import parse_config_from_filename,sanitize_filename
 
 MAXLEN = 512
 BATCH_SIZE = 4
@@ -109,13 +110,16 @@ def main():
     args.device = torch.device("cuda:{}".format(args.device_num))
 
     filename = args.dataset_path.split("/")[-1]
+    # config from filename
+    parsed_config = parse_config_from_filename(filename)
+    
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
         project="peft_mctg_eval",
         name=f"{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy","Mixture"], # sanitized_filename
-        config=vars(args)
+        config=vars(parsed_config)
     )
     
     aspect_list = ['sentiment', 'topic_cged']

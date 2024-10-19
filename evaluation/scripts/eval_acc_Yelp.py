@@ -7,13 +7,8 @@ import torch
 import json
 import pdb
 from eval_perplexity import full_ppl_eval
-#
-import re
+from eval_utils import parse_config_from_filename,sanitize_filename
 import wandb
-def sanitize_filename(name):
-    # Replace any invalid character with an underscore
-    return re.sub(r'[^a-zA-Z0-9\-_.]', '_', name)
-#
 
 MAXLEN = 512
 BATCH_SIZE = 4
@@ -115,13 +110,16 @@ def main():
     
     # wandb
     filename = args.dataset_path.split("/")[-1]
+    # config from filename
+    parsed_config = parse_config_from_filename(filename)
+    
     sanitized_filename = sanitize_filename(filename)
     wandb.init(
         project="peft_mctg_eval",
         name=f"{sanitized_filename}",
         notes="Acc evaluation",
         tags=["eval","accuracy","Yelp"], # sanitized_filename
-        config=vars(args)
+        config=vars(parsed_config)
     )
     aspect_list = ['sentiment', 'pronoun', 'tense']
     acc_dic = dict()
