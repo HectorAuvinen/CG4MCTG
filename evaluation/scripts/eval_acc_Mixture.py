@@ -9,7 +9,7 @@ import pdb
 
 import wandb
 from eval_perplexity import full_ppl_eval
-from eval_utils import parse_config_from_filename,sanitize_filename,count_ngram,eval_distinct
+from eval_utils import parse_config_from_filename,sanitize_filename,eval_distinct
 
 MAXLEN = 512
 BATCH_SIZE = 4

@@ -7,7 +7,7 @@ import torch
 import json
 import pdb
 from eval_perplexity import full_ppl_eval
-from eval_utils import parse_config_from_filename,sanitize_filename
+from eval_utils import parse_config_from_filename,sanitize_filename,eval_distinct
 import wandb
 
 MAXLEN = 512
@@ -143,6 +143,7 @@ def main():
         config.tar_dim = args.tar_dim
         tokenizer = RobertaTokenizer.from_pretrained(args.model_name_or_path)
 
+        """ # added
         f = open(args.dataset_path, 'r')
         all_data = list()
         label_keys = list()
@@ -159,6 +160,33 @@ def main():
                 if 'type' in dic:
                     keys.remove('type')
                 label_keys = keys
+        """ # added
+        # added
+        all_data = list()
+        label_keys = list()
+        with open(args.dataset_path, 'r') as f:
+            for item in f.readlines():
+                dic = json.loads(item)
+                all_data.append(dic)
+
+                if len(label_keys) == 0:
+                    keys = list(dic.keys())
+                    if 'text' in dic:
+                        keys.remove('text')
+                    elif 'review' in dic:
+                        keys.remove('review')
+                    if 'type' in dic:
+                        keys.remove('type')
+                    label_keys = keys
+        
+        # for dist calcs
+        text_list = []
+        for dic in all_data:
+            if 'text' in dic:
+                text_list.append(dic['text'])
+            elif 'review' in dic:
+                text_list.append(dic['review'])
+        # added
         
         assert args.test_aspect in label_keys
         # if 'topic_cged' in label_keys:
@@ -236,13 +264,28 @@ def main():
         #     logs['acc{}'.format(i)] = float('{:.4f}'.format(acc_lst[i]))
         # logs['total_loss'] = tr_loss
         # print(logs)
+    # added
+    dist1, dist2, dist3 = eval_distinct(hyps_resp=text_list, tokenizer=tokenizer)
+    distinct_metrics = {
+        'dist1': float('{:.4f}'.format(dist1)),
+        'dist2': float('{:.4f}'.format(dist2)),
+        'dist3': float('{:.4f}'.format(dist3)),
+    }
+    # added
     perplexity = full_ppl_eval(args)
     with open("results.txt", "w") as results_file:
         for key in acc_dic.keys():
             results_file.write(f"{key}: {acc_dic[key]}\n")
         results_file.write(f"avg_ppl: {perplexity['avg_ppl']}\n")
+        # added
+        for key, value in distinct_metrics.items():
+            results_file.write(f"{key}: {value}\n")
+        # added
     wandb.save("results.txt")
     wandb.log(perplexity)
+    # added
+    wandb.log(distinct_metrics)
+    # added
     wandb.finish()
     
 if __name__ == "__main__":
