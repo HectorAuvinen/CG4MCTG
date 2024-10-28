@@ -9,3 +9,5 @@ __pycache__/
 .vscode/
 
 evaluation/test_cases/
+
+notebooks/result_analysis.ipynb
