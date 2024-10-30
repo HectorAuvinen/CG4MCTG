@@ -58,6 +58,8 @@ def parse_config_from_filename(filename):
         'rf': None,
         'af': None,
         'dout': None,
+        'dout_a': None,
+        'dout_b': None,
         'lr': None,
         'ln': None,
         'ln_res': None,
@@ -78,7 +80,7 @@ def parse_config_from_filename(filename):
     }
 
     known_keys = [
-        'rf', 'af', 'dout', 'lr', 'ln', 'ln_res', 'lambda', 'plen',
+        'rf', 'af', 'dout', 'dout_a', 'dout_b', 'lr', 'ln', 'ln_res', 'lambda', 'plen',
         'bs', 'batch_size', 'epoch', 'seed', 'test_seed', 'ignore_index',
         'rank', 'alpha', 'target_modules'
     ]
