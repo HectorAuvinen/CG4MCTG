@@ -1,5 +1,5 @@
 
-main_folder=./adapters/
+main_folder=./exp/
 dataset=Mixture
 device_num=1
 
