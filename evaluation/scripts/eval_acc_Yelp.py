@@ -104,6 +104,7 @@ def main():
     parser.add_argument("--tar_dim", default=None, type=int)
     parser.add_argument("--test_aspect", default=None, type=str, choices=['sentiment', 'pronoun', 'tense'])
     parser.add_argument("--device_num", default=None, type=str)
+    parser.add_argument("--token_dist", action="store_true", default=False)
     args = parser.parse_args()
     # args.device = DEVICE
     args.device = torch.device("cuda:{}".format(args.device_num))
@@ -265,12 +266,18 @@ def main():
         # logs['total_loss'] = tr_loss
         # print(logs)
     # added
-    dist1, dist2, dist3 = eval_distinct(hyps_resp=text_list, tokenizer=tokenizer)
+    dist1, dist2, dist3 = eval_distinct(hyps_resp=text_list, tokenizer=tokenizer if args.token_dist else None)
     distinct_metrics = {
-        'dist1': float('{:.4f}'.format(dist1)),
-        'dist2': float('{:.4f}'.format(dist2)),
-        'dist3': float('{:.4f}'.format(dist3)),
+        'dist1': round(dist1, 4),
+        'dist2': round(dist2, 4),
+        'dist3': round(dist3, 4),
     }
+    # dist1, dist2, dist3 = eval_distinct(hyps_resp=text_list, tokenizer=tokenizer)
+    # distinct_metrics = {
+    #     'dist1': float('{:.4f}'.format(dist1)),
+    #     'dist2': float('{:.4f}'.format(dist2)),
+    #     'dist3': float('{:.4f}'.format(dist3)),
+    # }
     # added
     perplexity = full_ppl_eval(args)
     with open("results.txt", "w") as results_file:

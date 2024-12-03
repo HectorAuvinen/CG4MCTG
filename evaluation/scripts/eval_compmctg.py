@@ -11,11 +11,12 @@ def eval():
     parser.add_argument("--eval_perplexity_path", default="./scripts/eval_perplexity.py", type=str)
     parser.add_argument("--dataset", default=None, type=str, choices=["Fyelp", "Amazon", "Yelp", "Mixture"])
     parser.add_argument("--device_num", default=None, type=str)
+    parser.add_argument("--token_dist", action="store_true", default=False)
     args = parser.parse_args()
 
     assert args.dataset is not None
     assert args.device_num is not None
-    args_to_pass = ["--dataset_path", args.dataset_path, "--device_num", args.device_num]
+    args_to_pass = ["--dataset_path", args.dataset_path, "--device_num", args.device_num, "--token_dist", args.token_dist]
     if args.dataset in args.eval_Fyelp_path:
         subprocess.run(['python', args.eval_Fyelp_path] + args_to_pass)
         subprocess.run(['python', args.eval_perplexity_path] + args_to_pass)

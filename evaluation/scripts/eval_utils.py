@@ -1,5 +1,6 @@
 import re
 import ast
+from nltk.util import ngrams
 
 def count_ngram(hyps_resp, n):
     """
@@ -25,13 +26,66 @@ def count_ngram(hyps_resp, n):
             ngram.add(' '.join(resp[i: i + n]))
     return len(ngram)
 
-def eval_distinct(hyps_resp, tokenizer):
+def eval_distinct(hyps_resp, tokenizer=None):
     """
     compute distinct score for the hyps_resp
     :param hyps_resp: list, a list of hyps responses
     :return: average distinct score for 1, 2-gram
     """
+    if not hyps_resp:
+        print("ERROR: eval_distinct received empty input")
+        return 0.0, 0.0, 0.0
 
+    dist1_scores = []
+    dist2_scores = []
+    dist3_scores = []
+    if tokenizer is not None:
+        print("using tokenizer", tokenizer)
+    else:
+        print("using whitespace tokenizer")
+    for response in hyps_resp:
+        # Tokenizer tokenize
+        if tokenizer is not None:
+            tokens = list(map(str, tokenizer.encode(response)))
+        # Whitespace tokenize
+        else:
+            tokens = response.split()
+
+        if not tokens:
+            continue
+
+        # 1-gram, 2-gram, 3-gram
+        unigrams = tokens
+        bigrams = list(ngrams(tokens, 2))
+        trigrams = list(ngrams(tokens, 3))
+
+        # total n-grams
+        total_unigrams = len(unigrams)
+        total_bigrams = len(bigrams) if bigrams else 1  
+        total_trigrams = len(trigrams) if trigrams else 1  
+
+        # unique n-grams
+        unique_unigrams = len(set(unigrams))
+        unique_bigrams = len(set(bigrams))
+        unique_trigrams = len(set(trigrams))
+
+        # dist-n score for this generation
+        dist1 = unique_unigrams / total_unigrams
+        dist2 = unique_bigrams / total_bigrams
+        dist3 = unique_trigrams / total_trigrams
+
+        dist1_scores.append(dist1)
+        dist2_scores.append(dist2)
+        dist3_scores.append(dist3)
+
+    # average dist-n scores over all generations
+    avg_dist1 = sum(dist1_scores) / len(dist1_scores) if dist1_scores else 0.0
+    avg_dist2 = sum(dist2_scores) / len(dist2_scores) if dist2_scores else 0.0
+    avg_dist3 = sum(dist3_scores) / len(dist3_scores) if dist3_scores else 0.0
+
+    return avg_dist1, avg_dist2, avg_dist3
+    
+    """ Previous implementation:
     hyps_resp = [list(map(str, tokenizer.encode(h))) for h in hyps_resp]
 
     if len(hyps_resp) == 0:
@@ -50,6 +104,7 @@ def eval_distinct(hyps_resp, tokenizer):
     dist3 = count_ngram(hyps_resp, 3) / float(num_tokens)
 
     return dist1, dist2, dist3
+    """
 
 # filename parsing
 def parse_config_from_filename(filename):
